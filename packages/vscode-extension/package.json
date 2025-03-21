@@ -1,7 +1,7 @@
 {
   "name": "code-weaver",
-  "displayName": "code-weaver",
-  "description": "Code Weaver is a VS Code extension that helps developers intelligently build and manage context for AI interactionns.",
+  "displayName": "Code Weaver",
+  "description": " Seamlessly connect your development environment with AI assistants. This extension provides smart code analysis, AI-powered suggestions, and direct integration with Claude and other LLMs to enhance your coding workflow. Features include contextual code completion, intelligent refactoring suggestions, and collaborative problem-solving through a dedicated webview interface.",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.98.0"

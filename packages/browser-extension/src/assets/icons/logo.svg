@@ -1,0 +1,32 @@
+
+<svg width="128" height="128" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+        <linearGradient id="bgGradient" x1="0" y1="0" x2="128" y2="128">
+            <stop offset="0%" stop-color="#2D3748"/>
+            <stop offset="100%" stop-color="#1A202C"/>
+        </linearGradient>
+    </defs>
+
+    <!-- Gradient background circle -->
+    <circle cx="64" cy="64" r="62" fill="url(#bgGradient)" stroke="#CBD5E0" stroke-width="3"/>
+
+    <!-- Original "broken" weave lines -->
+    <g stroke="#63B3ED" stroke-width="3.5" stroke-linecap="round">
+        <!-- Solid lines -->
+        <line x1="24" y1="44" x2="84" y2="104"/>
+        <line x1="34" y1="34" x2="94" y2="94"/>
+        <line x1="44" y1="24" x2="104" y2="84"/>
+        <line x1="14" y1="54" x2="74" y2="114"/>
+        <line x1="54" y1="14" x2="114" y2="74"/>
+
+        <!-- Dashed lines (broken weave) -->
+        <line x1="104" y1="44" x2="44" y2="104" stroke-dasharray="12,6"/>
+        <line x1="94" y1="34" x2="34" y2="94" stroke-dasharray="12,6"/>
+        <line x1="84" y1="24" x2="24" y2="84" stroke-dasharray="12,6"/>
+        <line x1="114" y1="54" x2="54" y2="114" stroke-dasharray="12,6"/>
+        <line x1="74" y1="14" x2="14" y2="74" stroke-dasharray="12,6"/>
+    </g>
+
+    <!-- Larger, softer-colored brackets -->
+    <text x="64" y="82" fill="#90CDF4" font-family="monospace" font-size="60" font-weight="bold" text-anchor="middle">{ }</text>
+</svg>
