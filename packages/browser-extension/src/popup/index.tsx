@@ -45,7 +45,7 @@ const Popup: React.FC = () => {
 
   return (
     <div className="popup-container">
-      <h1>CodeWeaver</h1>
+      <h1>Code Weaver</h1>
       <p>Hello from the popup!</p>
       
       <div className="message-container">

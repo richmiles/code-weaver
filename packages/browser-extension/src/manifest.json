@@ -1,8 +1,8 @@
 {
     "manifest_version": 3,
-    "name": "CodeWeaver",
+    "name": "Code Weaver",
     "version": "0.1.0",
-    "description": "A browser extension for CodeWeaver",
+    "description": "A browser extension for Code Weaver",
     "action": {
       "default_popup": "popup.html",
       "default_icon": {

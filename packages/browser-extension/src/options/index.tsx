@@ -52,7 +52,7 @@ const Options: React.FC = () => {
 
   return (
     <div className="options-container">
-      <h1>CodeWeaver Options</h1>
+      <h1>Code Weaver Options</h1>
       
       <div className="option-item">
         <label>
@@ -77,9 +77,9 @@ const Options: React.FC = () => {
       </div>
       
       <div className="info-box">
-        <h2>About CodeWeaver</h2>
+        <h2>About Code Weaver</h2>
         <p>Version 0.1.0</p>
-        <p>A browser extension for CodeWeaver</p>
+        <p>A browser extension for Code Weaver</p>
       </div>
     </div>
   );

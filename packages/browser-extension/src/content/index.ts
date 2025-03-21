@@ -1,6 +1,6 @@
 import browser from 'webextension-polyfill';
 
-console.log('CodeWeaver content script loaded');
+console.log('Code Weaver content script loaded');
 
 // Define the message interface and type guard
 interface MyMessage {
