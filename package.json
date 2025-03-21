@@ -14,15 +14,14 @@
     "clean": "nx run-many --target=clean --all"
   },
   "devDependencies": {
-    "@nx/eslint": "20.6.2",
-    "@nx/js": "latest",
-    "@nx/vite": "20.6.2",
-    "eslint": "~8.57.0",
-    "nx": "20.6.2",
-    "typescript": "^5.0.0"
+    "@nx/eslint": "^20.6.2",
+    "@nx/js": "^20.6.2",
+    "@nx/vite": "^20.6.2",
+    "eslint": "^9.23.0",
+    "nx": "^20.6.2",
+    "typescript": "^5.8.2"
   },
   "engines": {
     "node": ">=16.0.0"
-  },
-  "dependencies": {}
+  }
 }
