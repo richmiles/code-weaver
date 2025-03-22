@@ -9,6 +9,16 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export default [
   ...baseConfig,
   {
+    ignores: [
+      'dist/**',
+      'node_modules/**',
+      '**/*.js.map',
+      '**/*.d.ts',
+      'vite.config.ts',
+      'eslint.config.js',
+    ]
+  },
+  {
     files: ['**/*.{ts,tsx}'],
     languageOptions: {
       parserOptions: {

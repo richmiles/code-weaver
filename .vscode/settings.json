@@ -1,4 +1,11 @@
 {
-    "codeLoom.connectionCode": "724918",
-    "codeLoom.wsPort": 55293
-}
+    "eslint.enable": true,
+    "eslint.run": "onType", // or "onSave"
+    "eslint.validate": [
+      "javascript",
+      "javascriptreact",
+      "typescript",
+      "typescriptreact"
+    ]
+  }
+  

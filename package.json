@@ -2,6 +2,7 @@
   "name": "codeweaver",
   "private": true,
   "version": "0.0.1",
+  "type": "module",
   "description": "Code Weaver - VS Code and Browser Extension with MCP integration",
   "workspaces": [
     "packages/*"
