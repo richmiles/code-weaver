@@ -57,6 +57,9 @@
       }
     }
   },
+  "dependencies": {
+    "@codeweaver/core": "workspace:*"
+  },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "^22.13.11",

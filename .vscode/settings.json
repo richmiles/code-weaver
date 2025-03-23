@@ -6,6 +6,8 @@
       "javascriptreact",
       "typescript",
       "typescriptreact"
-    ]
+    ],
+    "codeLoom.connectionCode": "157416",
+    "codeLoom.wsPort": 55293
   }
   

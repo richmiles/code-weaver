@@ -8,6 +8,9 @@
 	  "rootDir": "src"
 	},
 	"include": ["src/**/*", "tests"],
-	"exclude": ["node_modules", "dist", "**/*.test.ts"]
+	"exclude": ["node_modules", "dist", "**/*.test.ts"],
+	"references": [
+		{ "path": "../core" }
+	]
   }
   
