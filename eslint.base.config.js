@@ -1,8 +1,17 @@
 import tseslint from 'typescript-eslint';
 import importPlugin from 'eslint-plugin-import';
 
-export default tseslint.config({
-  ignores: ['dist/**'],
+export default tseslint.config({  
+  ignores: [
+    'dist/**',
+    'node_modules/**',
+    '**/*.js.map',
+    '**/*.d.ts',
+    'vite.config.ts',
+    'eslint.config.js',
+    '**/*.config.js',
+    'jest.config.js',
+  ],
   languageOptions: {
     parser: tseslint.parser,
     parserOptions: {

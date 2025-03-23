@@ -2,12 +2,15 @@
     "eslint.enable": true,
     "eslint.run": "onType", // or "onSave"
     "eslint.validate": [
-      "javascript",
-      "javascriptreact",
       "typescript",
       "typescriptreact"
     ],
-    "codeLoom.connectionCode": "157416",
-    "codeLoom.wsPort": 55293
+    "eslint.options": {
+      "ignorePatterns": [
+        "**/*.config.js", 
+        "**/eslint.config.js", 
+        "**/jest.config.js",
+      ]
+    }
   }
   
