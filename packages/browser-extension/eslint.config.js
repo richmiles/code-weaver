@@ -9,10 +9,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export default [
   ...baseConfig,
   {
-    files: ['**/*.{ts,tsx}'],
+    files: ['src/**/*.{ts,tsx}'],
     languageOptions: {
       parserOptions: {
-        project: path.resolve(__dirname, 'tsconfig.json'),
+        project: path.resolve(__dirname, 'tsconfig.eslint.json'),
       },
       globals: {
         browser: 'readonly',
@@ -37,6 +37,25 @@ export default [
   {
     files: ['src/background/**/*.ts', 'src/content/**/*.ts'],
     rules: {
+      'no-console': 'off',
+    },
+  },
+  {
+    files: ['tests/**/*.{ts,tsx}'],
+    languageOptions: {
+      globals: {
+        jest: 'readonly',
+        describe: 'readonly',
+        it: 'readonly',
+        expect: 'readonly',
+        beforeEach: 'readonly',
+        afterEach: 'readonly',
+        browser: 'readonly',
+      },
+    },
+    // Test-specific rules
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
       'no-console': 'off',
     },
   },

@@ -21,7 +21,7 @@ export default tseslint.config(
       parserOptions: {
         ecmaVersion: 'latest',
         sourceType: 'module',
-        project: path.resolve(__dirname, './tsconfig.json')
+        project: path.resolve(__dirname, './tsconfig.eslint.json'),
       },
       globals: {
         module: 'readonly',
@@ -45,6 +45,23 @@ export default tseslint.config(
       eqeqeq: 'warn',
       curly: 'warn',
       semi: ['warn', 'always']
+    }
+  },
+  {
+    files: ['tests/**/*.ts'],
+    languageOptions: {
+      globals: {
+        jest: 'readonly',
+        describe: 'readonly',
+        it: 'readonly',
+        expect: 'readonly',
+        beforeEach: 'readonly',
+        afterEach: 'readonly'
+      }
+    },
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+      'no-console': 'off'
     }
   }
 );
