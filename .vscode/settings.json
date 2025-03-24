@@ -11,6 +11,8 @@
         "**/eslint.config.js", 
         "**/jest.config.js",
       ]
-    }
+    },
+    "codeLoom.connectionCode": "875210",
+    "codeLoom.wsPort": 55293
   }
   

@@ -8,7 +8,7 @@ interface MyMessage {
   from?: string;
 }
 
-function isMyMessage(message: unknown): message is MyMessage {
+export function isMyMessage(message: unknown): message is MyMessage {
   if (typeof message !== 'object' || message === null) {
     return false;
   }

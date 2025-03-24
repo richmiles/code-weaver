@@ -1,93 +1,68 @@
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import browser from 'webextension-polyfill';
-import './options.css';
+import './popup.css';
 
-const Options: React.FC = () => {
-  const [settings, setSettings] = useState({
-    enabled: true,
-    theme: 'light'
-  });
+export const Popup: React.FC = () => {
+  const [message, setMessage] = useState<string>('');
+
+  interface MessageResponse {
+    response: string;
+  }
 
   useEffect(() => {
-    browser.storage.sync.get(['enabled', 'theme'])
-      .then(result => {
-        setSettings({
-          enabled: typeof result.enabled === 'boolean' ? result.enabled : true,
-          theme: typeof result.theme === 'string' ? result.theme : 'light'
-        });
+    browser.runtime.sendMessage({ type: 'HELLO', from: 'popup' })
+      .then((response) => {
+        const typedResponse = response as MessageResponse;
+        setMessage(typedResponse.response || 'No response');
       })
       .catch(error => {
-        console.error('Error loading settings:', error);
+        setMessage(`Error: ${error.message}`);
       });
   }, []);
-  
-  
 
-  const handleToggleEnabled = () => {
-    const newSettings = {
-      ...settings,
-      enabled: !settings.enabled
-    };
-    
-    setSettings(newSettings);
-    browser.storage.sync.set({ enabled: newSettings.enabled })
-      .catch(error => {
-        console.error('Error saving setting:', error);
-      });
-  };
+  const sendMessageToContent = async () => {
+    try {
+      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
 
-  const handleThemeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newSettings = {
-      ...settings,
-      theme: e.target.value
-    };
-    
-    setSettings(newSettings);
-    browser.storage.sync.set({ theme: newSettings.theme })
-      .catch(error => {
-        console.error('Error saving setting:', error);
-      });
+      if (tabs[0]?.id) {
+        const response = await browser.tabs.sendMessage(tabs[0].id, {
+          type: 'HELLO',
+          from: 'popup'
+        });
+        const typedResponse = response as MessageResponse;
+        setMessage(typedResponse.response || 'No response from content script');
+      } else {
+        setMessage('No active tab found');
+      }
+    } catch (error) {
+      setMessage(`Error: ${error instanceof Error ? error.message : String(error)}`);
+    }
   };
 
   return (
-    <div className="options-container">
-      <h1>Code Weaver Options</h1>
-      
-      <div className="option-item">
-        <label>
-          <input
-            type="checkbox"
-            checked={settings.enabled}
-            onChange={handleToggleEnabled}
-          />
-          Enable extension
-        </label>
+    <div className="popup-container">
+      <h1>Code Weaver</h1>
+      <p>Hello from the popup!</p>
+      <div className="message-container">
+        <p><strong>Message:</strong> {message}</p>
       </div>
-      
-      <div className="option-item">
-        <label>
-          Theme:
-          <select value={settings.theme} onChange={handleThemeChange}>
-            <option value="light">Light</option>
-            <option value="dark">Dark</option>
-            <option value="system">System</option>
-          </select>
-        </label>
-      </div>
-      
-      <div className="info-box">
-        <h2>About Code Weaver</h2>
-        <p>Version 0.1.0</p>
-        <p>A browser extension for Code Weaver</p>
-      </div>
+      <button onClick={sendMessageToContent}>
+        Send Message to Content Script
+      </button>
     </div>
   );
 };
 
-const root = ReactDOM.createRoot(document.getElementById('root') as HTMLElement);
-root.render(
-  <React.StrictMode>
-    <Options />
-  </React.StrictMode>
-);
+// Only render if root element is found
+const rootElement = document.getElementById('root');
+if (rootElement) {
+  const root = ReactDOM.createRoot(rootElement);
+  root.render(
+    <React.StrictMode>
+      <Popup />
+    </React.StrictMode>
+  );
+}
+
+export default Popup;

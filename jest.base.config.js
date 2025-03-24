@@ -23,5 +23,5 @@ export default {
       '!<rootDir>/src/**/index.{ts,tsx}'
     ],
     coverageReporters: ['text', 'lcov'],
-    roots: ['<rootDir>/src'],
+    roots: ['<rootDir>/tests'],
   };
