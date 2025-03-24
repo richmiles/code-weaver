@@ -1,12 +1,37 @@
 // packages/browser-extension/tests/__mocks__/webextension-polyfill.ts
 
+// Define type interfaces to avoid 'any'
+interface Message {
+  type: string;
+  from?: string;
+  dataType?: string;
+  [key: string]: unknown;
+}
+
+interface Sender {
+  tab?: {
+    id: number;
+    url?: string;
+  };
+  frameId?: number;
+  id?: string;
+  url?: string;
+}
+
+interface RuntimeSendMessageOptions {
+  includeTlsChannelId?: boolean;
+}
+
 // Type definition for message handlers
-type MessageHandler = (message: any, sender?: any) => Promise<any> | any;
+type MessageHandler = (
+  message: Message,
+  sender?: Sender
+) => Promise<unknown>;
 
 // Store for different message handlers based on type
 const messageHandlers: Record<string, MessageHandler> = {
   // Default handler for HELLO messages
-  HELLO: (message) => {
+  HELLO: (message: Message) => {
     // Return different responses based on 'from' field
     const from = message.from || 'unknown';
     
@@ -20,11 +45,11 @@ const messageHandlers: Record<string, MessageHandler> = {
   },
   
   // Example of another message type
-  GET_DATA: (message) => {
+  GET_DATA: (message: Message) => {
     const dataType = message.dataType || 'default';
     
     // Simulate different data responses
-    const responses: Record<string, any> = {
+    const responses: Record<string, unknown> = {
       'user': { userId: 123, name: 'Test User', role: 'admin' },
       'settings': { theme: 'dark', notifications: true, autoUpdate: false },
       'default': { status: 'success', message: 'Default data' }
@@ -40,7 +65,10 @@ const messageHandlers: Record<string, MessageHandler> = {
 };
 
 // Define behavior for the runtime.sendMessage mock
-const runtimeSendMessage: MessageHandler = (message) => {
+const runtimeSendMessage = (
+  message: Message,
+  _options?: RuntimeSendMessageOptions
+): Promise<unknown> => {
   if (typeof message !== 'object' || message === null) {
     return Promise.reject(new Error('Invalid message format'));
   }
@@ -60,7 +88,10 @@ const runtimeSendMessage: MessageHandler = (message) => {
 };
 
 // Mock for tabs.sendMessage with similar behavior
-const tabsSendMessage: MessageHandler = (tabId, message) => {
+const tabsSendMessage = (
+  tabId: number,
+  message: Message
+): Promise<unknown> => {
   // For testing, we can have the content script mock respond similarly
   if (typeof message !== 'object' || message === null) {
     return Promise.reject(new Error('Invalid message format'));
@@ -87,7 +118,7 @@ interface StorageData {
     autoSave: boolean;
     notifications: boolean;
   };
-  [key: string]: any; // Add index signature for other potential keys
+  [key: string]: unknown; // Add index signature for other potential keys
 }
 
 // Default storage data
@@ -97,16 +128,32 @@ const defaultStorageData: StorageData = {
   preferences: { autoSave: true, notifications: true }
 };
 
+interface OnMessageListenerCallback {
+  (message: Message, sender: Sender, sendResponse: (response?: unknown) => void): void | boolean | Promise<unknown>;
+}
+
+interface OnInstalledListenerCallback {
+  (details: { reason: string; temporary?: boolean; }): void;
+}
+
+interface OnUpdatedListenerCallback {
+  (tabId: number, changeInfo: Record<string, unknown>, tab: { id: number; url?: string }): void;
+}
+
+interface OnChangedListenerCallback {
+  (changes: Record<string, { oldValue?: unknown; newValue?: unknown }>, areaName: string): void;
+}
+
 // Create the mock browser object
 const browserMock = {
   runtime: {
     sendMessage: jest.fn().mockImplementation(runtimeSendMessage),
     onMessage: {
-      addListener: jest.fn(),
-      removeListener: jest.fn(),
+      addListener: jest.fn<void, [OnMessageListenerCallback]>(),
+      removeListener: jest.fn<void, [OnMessageListenerCallback]>(),
     },
     onInstalled: {
-      addListener: jest.fn(),
+      addListener: jest.fn<void, [OnInstalledListenerCallback]>(),
     },
   },
   tabs: {
@@ -115,7 +162,7 @@ const browserMock = {
     }),
     sendMessage: jest.fn().mockImplementation(tabsSendMessage),
     onUpdated: {
-      addListener: jest.fn(),
+      addListener: jest.fn<void, [OnUpdatedListenerCallback]>(),
     },
   },
   storage: {
@@ -147,30 +194,33 @@ const browserMock = {
         
         return Promise.resolve({...defaultStorageData});
       }),
-      set: jest.fn().mockImplementation((items) => Promise.resolve()),
-      remove: jest.fn().mockImplementation((keys) => Promise.resolve()),
+      set: jest.fn().mockImplementation((_items: Partial<StorageData>) => Promise.resolve()),
+      remove: jest.fn().mockImplementation((_keys: string | string[]) => Promise.resolve()),
       clear: jest.fn().mockImplementation(() => Promise.resolve()),
     },
     local: {
       get: jest.fn().mockImplementation(() => Promise.resolve({})),
-      set: jest.fn().mockImplementation(() => Promise.resolve()),
-      remove: jest.fn().mockImplementation(() => Promise.resolve()),
+      set: jest.fn().mockImplementation((_items: Record<string, unknown>) => Promise.resolve()),
+      remove: jest.fn().mockImplementation((_keys: string | string[]) => Promise.resolve()),
       clear: jest.fn().mockImplementation(() => Promise.resolve()),
     },
     onChanged: {
-      addListener: jest.fn(),
-      removeListener: jest.fn(),
+      addListener: jest.fn<void, [OnChangedListenerCallback]>(),
+      removeListener: jest.fn<void, [OnChangedListenerCallback]>(),
     }
   },
   
   // Mock API to help with testing
   __mockReset: () => {
+    // Reset all mocks
     Object.values(browserMock).forEach(namespace => {
-      Object.values(namespace).forEach(method => {
-        if (jest.isMockFunction(method)) {
-          method.mockClear();
-        }
-      });
+      if (namespace && typeof namespace === 'object') {
+        Object.values(namespace).forEach(method => {
+          if (jest.isMockFunction(method)) {
+            method.mockClear();
+          }
+        });
+      }
     });
   },
   

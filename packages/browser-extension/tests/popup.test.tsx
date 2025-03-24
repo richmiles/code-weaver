@@ -1,7 +1,7 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import Popup from '../src/popup/Popup';
 import browser from 'webextension-polyfill';
+import Popup from '../src/popup/Popup';
 
 describe('Popup Component', () => {
   beforeEach(() => {
