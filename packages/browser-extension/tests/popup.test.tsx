@@ -3,29 +3,6 @@ import '@testing-library/jest-dom';
 import Popup from '../src/popup/Popup';
 import browser from 'webextension-polyfill';
 
-// Create mock implementations that resolve immediately
-jest.mock('webextension-polyfill', () => {
-  const mockRuntime = {
-    sendMessage: jest.fn().mockImplementation(() => {
-      return Promise.resolve({ response: 'Test response from background script' });
-    })
-  };
-  
-  const mockTabs = {
-    query: jest.fn().mockImplementation(() => {
-      return Promise.resolve([{ id: 123 }]);
-    }),
-    sendMessage: jest.fn().mockImplementation(() => {
-      return Promise.resolve({ response: 'Test response from content script' });
-    })
-  };
-  
-  return {
-    runtime: mockRuntime,
-    tabs: mockTabs
-  };
-});
-
 describe('Popup Component', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -40,7 +17,7 @@ describe('Popup Component', () => {
     
     // Wait for the background message to resolve
     await waitFor(() => {
-      expect(screen.getByText(/Test response from background script/i)).toBeInTheDocument();
+      expect(screen.getByText(/Hello popup! This is the background script./i)).toBeInTheDocument();
     });
   });
 
@@ -49,7 +26,7 @@ describe('Popup Component', () => {
     
     // Wait for initial loading to complete
     await waitFor(() => {
-      expect(screen.getByText(/Test response from background script/i)).toBeInTheDocument();
+      expect(screen.getByText(/Hello popup! This is the background script./i)).toBeInTheDocument();
     });
     
     // Click the button to send message to content script
@@ -61,7 +38,7 @@ describe('Popup Component', () => {
     
     // Wait for the content script message to resolve
     await waitFor(() => {
-      expect(screen.getByText(/Test response from content script/i)).toBeInTheDocument();
+      expect(screen.getByText(/Hello from content script!/i)).toBeInTheDocument();
       expect(button).not.toBeDisabled();
     });
     
