@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import browser from 'webextension-polyfill';
-import './popup.css';
+// Fix the CSS import path
+import '../popup/popup.css';
 
 export const Popup: React.FC = () => {
   const [message, setMessage] = useState<string>('');
