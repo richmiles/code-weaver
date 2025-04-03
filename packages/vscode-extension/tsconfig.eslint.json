@@ -1,5 +1,5 @@
 {
-    "extends": "../../tsconfig.base.json",
+    "extends": "../../tsconfig.eslint.base.json",
     "compilerOptions": {
       "module": "Node16",
       "moduleResolution": "Node16",
