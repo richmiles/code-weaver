@@ -1,3 +1,5 @@
+/* eslint-disable no-console */
+
 import esbuild from "esbuild";
 
 const production = process.argv.includes('--production');

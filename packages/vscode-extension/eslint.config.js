@@ -1,54 +1,48 @@
-import { fileURLToPath } from 'url';
+import baseConfig from '../../eslint.base.config.js';
 import path from 'path';
-import tseslint from 'typescript-eslint';
-import importPlugin from 'eslint-plugin-import';
+import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export default tseslint.config(
+export default [
+  // Inherit the shared ESLint base configuration
+  ...baseConfig,
+  // Package-specific settings for source files
   {
-    ignores: [
-      'dist/**',
-      'node_modules/**',
-      '**/*.js.map',
-      '**/*.d.ts'
-    ]
-  },
-  {
-    files: ['**/*.ts'],
+    files: ['src/**/*.{ts,tsx}'],
     languageOptions: {
-      parser: tseslint.parser,
       parserOptions: {
-        ecmaVersion: 'latest',
-        sourceType: 'module',
-        project: path.resolve(__dirname, './tsconfig.eslint.json'),
+        project: path.resolve(__dirname, 'tsconfig.eslint.json'),
       },
       globals: {
         module: 'readonly',
         require: 'readonly',
-        __dirname: 'readonly'
+        __dirname: 'readonly',
+        vscode: 'readonly',
+        acquireVsCodeApi: 'readonly'
       }
     },
-    plugins: {
-      '@typescript-eslint': tseslint.plugin,
-      import: importPlugin
-    },
     rules: {
+      // Relax some rules for a better dev experience
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
-      '@typescript-eslint/naming-convention': ['warn', {
-        selector: 'import',
-        format: ['camelCase', 'PascalCase']
-      }],
+      '@typescript-eslint/naming-convention': [
+        'warn',
+        {
+          selector: 'variableLike',
+          format: ['camelCase', 'PascalCase'],
+        }
+      ],
       'no-console': ['warn', { allow: ['warn', 'error'] }],
       'no-throw-literal': 'warn',
       eqeqeq: 'warn',
       curly: 'warn',
-      semi: ['warn', 'always']
-    }
+      semi: ['warn', 'always'],
+    },
   },
+  // Test-specific overrides
   {
-    files: ['tests/**/*.ts'],
+    files: ['tests/**/*.{ts,tsx}'],
     languageOptions: {
       globals: {
         jest: 'readonly',
@@ -62,6 +56,6 @@ export default tseslint.config(
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
       'no-console': 'off'
-    }
-  }
-);
+    },
+  },
+];
