@@ -1,26 +1,40 @@
-import baseConfig from '../../jest.base.config.js';
-
+// packages/vscode-extension/jest.config.js
 /** @type {import('jest').Config} */
 export default {
-  ...baseConfig,
   displayName: 'vscode-extension',
-  // Override the test environment to use node
   testEnvironment: 'node',
-  // Setup script to run before tests
   setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
-  // We need to adjust paths for the VS Code extension
-  moduleNameMapper: {
-    ...baseConfig.moduleNameMapper,
-    '^vscode$': '<rootDir>/tests/__mocks__/vscode-mock.ts',
-  },
-  // Run TypeScript tests directly
+
   transform: {
-    '^.+\\.(t|j)sx?$': ['ts-jest', { 
-      useESM: true 
-    }],
+    // Match .ts, .tsx, .js, .jsx - ts-jest handles TS/TSX, babel/node handles JS/JSX if needed by deps
+    '^.+\\.[tj]sx?$': [
+      'ts-jest',
+      {
+        useESM: true, // <<<--- Keep this TRUE
+        isolatedModules: true
+      }
+    ]
   },
-  transformIgnorePatterns: [
-    '/node_modules/(?!vscode).+\\.js$',
-  ],
+
+  // Tell Jest these extensions are ESM
   extensionsToTreatAsEsm: ['.ts', '.tsx'],
+
+  moduleNameMapper: {
+    // When code imports 'vscode', Jest should use our mock file.
+    // Crucially, the mock file MUST be resolved correctly relative to the rootDir.
+    '^vscode$': '<rootDir>/tests/__mocks__/vscode-mock.ts',
+
+    // ts-jest in ESM mode might add .js to relative imports, this handles it.
+    // Make sure this pattern is specific enough not to catch node_modules accidentally.
+    '^(\\.{1,2}/.*)\\.js$': '$1'
+  },
+
+  clearMocks: true,
+  restoreMocks: true,
+  // Ensure Jest knows about .ts and .tsx files
+  moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
+  testMatch: ['**/?(*.)+(spec|test).[jt]s?(x)'],
+  testPathIgnorePatterns: ['/node_modules/', '/dist/'], // Ignore dist directory
+  // No moduleDirectories needed if moduleNameMapper is correct
+  resetMocks: true
 };

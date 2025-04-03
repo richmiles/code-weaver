@@ -1,9 +1,18 @@
-// This file is run before each test file
+// packages/vscode-extension/tests/setup.ts
 
-// Set timeout for tests
-jest.setTimeout(15000);
+// Set Jest timeout
+jest.setTimeout(10000);
 
-// Reset mocks after each test
-afterEach(() => {
-  jest.resetAllMocks();
-});
+// Silence console.log during tests to clean up the output
+// Only console.error will be shown
+global.console = {
+  ...console,
+  log: jest.fn(),
+  warn: jest.fn(),
+  info: jest.fn(),
+  error: console.error, // Keep error messages visible
+  debug: jest.fn(),
+};
+
+// If you need to see specific console output for debugging, uncomment this:
+// console.log = console.error;
