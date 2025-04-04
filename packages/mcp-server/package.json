@@ -1,0 +1,25 @@
+{
+    "name": "@codeweaver/mcp-server",
+    "version": "0.1.0",
+    "description": "MCP server implementation for Code Weaver",
+    "main": "dist/index.js",
+    "type": "module",
+    "scripts": {
+      "build": "tsc",
+      "watch": "tsc --watch",
+      "clean": "rimraf dist",
+      "test": "jest",
+      "lint": "eslint --config eslint.config.js ."
+    },
+    "files": [
+      "dist"
+    ],
+    "dependencies": {
+      "@codeweaver/core": "^0.1.0",
+      "@modelcontextprotocol/sdk": "^1.0.0",
+      "zod": "^3.22.4"
+    },
+    "devDependencies": {
+      "rimraf": "^6.0.1"
+    }
+  }
