@@ -15,7 +15,7 @@ export default {
   },
   coverageDirectory: '<rootDir>/coverage',
   testEnvironment: 'node',
-  testMatch: ['**/?(*.)+(spec|test).[jt]s?(x)'],
+  testMatch: ['**/tests/**/*.test.[jt]s?(x)'],
   collectCoverageFrom: [
     '<rootDir>/src/**/*.{ts,tsx}',
     '!<rootDir>/src/**/*.d.ts',
