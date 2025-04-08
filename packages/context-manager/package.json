@@ -1,0 +1,17 @@
+{
+    "name": "@codeweaver/context-manager",
+    "version": "0.1.0",
+    "main": "dist/index.js",
+    "type": "module",
+    "scripts": {
+      "build": "tsc --project tsconfig.json",
+      "lint": "eslint --config eslint.config.js .",
+      "test": "jest"
+    },
+    "dependencies": {
+      "uuid": "^11.1.0",
+      "ws": "^8.18.1"
+    },
+    "devDependencies": {}
+  }
+  
