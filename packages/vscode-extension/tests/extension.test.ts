@@ -1,6 +1,7 @@
 // tests/extension.test.ts
 import * as vscode from 'vscode';
 import { activate } from '../src/extension';
+import { ExtensionContext } from './__mocks__/vscode'; 
 
 describe('My Extension', () => {
   beforeEach(() => {
@@ -8,7 +9,7 @@ describe('My Extension', () => {
   });
 
   it('should register the helloWorld command on activation', () => {
-    const context = new vscode.ExtensionContext();
+    const context = new ExtensionContext();
     activate(context);
 
     expect(vscode.commands.registerCommand).toHaveBeenCalledWith(
@@ -19,7 +20,7 @@ describe('My Extension', () => {
   });
 
   it('should call showInformationMessage when the helloWorld command is executed', () => {
-    const context = new vscode.ExtensionContext();
+    const context = new ExtensionContext();
     activate(context);
 
     // Cast to jest.Mock so we can access the .mock property.

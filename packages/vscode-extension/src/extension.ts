@@ -1,7 +1,7 @@
 // src/extension.ts
 import * as vscode from 'vscode';
 
-export function activate(context: vscode.ExtensionContext) {
+export function activate(context: ExtensionContext) {
   const disposable = vscode.commands.registerCommand('myExtension.helloWorld', () => {
     vscode.window.showInformationMessage('Hello World from my Extension!');
   });
