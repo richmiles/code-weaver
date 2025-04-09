@@ -12,7 +12,7 @@
       "skipLibCheck": true,
       "resolveJsonModule": true,
       "paths": {
-        "@codeweaver/core": ["./packages/core/src"],
+        "@codeweaver/core": ["./packages/core/src/index.ts"],
         "@codeweaver/core/*": ["./packages/core/src/*"]
       }
     }

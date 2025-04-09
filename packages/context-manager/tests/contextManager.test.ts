@@ -1,94 +1,138 @@
-// tests/contextManager.test.ts
+// contextManager.test.ts
+import {
+  FileSource,
+  DirectorySource, // Added import
+  SourceType
+} from '@codeweaver/core';
+
 import { ContextManager } from '../src/contextManager';
 
-describe('ContextManager', () => {
+// Helper function to create a small delay
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+describe('ContextManager with Source Types', () => {
   let contextManager: ContextManager;
 
   beforeEach(() => {
     contextManager = new ContextManager();
   });
 
-  it('should create a new context and return an ID', () => {
-    const data = { text: 'Hello World' };
-    const id = contextManager.createContext(data);
-    
-    expect(id).toBeDefined();
-    expect(typeof id).toBe('string');
+  describe('File Sources', () => {
+    it('should add a FileSource and retrieve it by id', () => {
+      // Create file source data (matches CreatableSource type)
+      const fileSourceData: Omit<FileSource, 'id' | 'createdAt' | 'updatedAt'> = {
+        type: SourceType.FILE,
+        label: 'Test File',
+        filePath: '/path/to/file.ts',
+        languageId: 'typescript'
+      };
+
+      // Add the source
+      const id = contextManager.addSource(fileSourceData); // Should now accept filePath
+
+      // Verify the id is returned
+      expect(id).toBeDefined();
+      expect(typeof id).toBe('string');
+
+      // Retrieve the source
+      const retrievedSource = contextManager.getSource(id) as FileSource; // Cast for specific property access
+
+      // Verify the source is retrieved correctly
+      expect(retrievedSource).toBeDefined();
+      expect(retrievedSource.id).toBe(id);
+      expect(retrievedSource.type).toBe(SourceType.FILE);
+      expect(retrievedSource.label).toBe('Test File');
+      expect(retrievedSource.filePath).toBe('/path/to/file.ts'); // Access specific property
+      expect(retrievedSource.languageId).toBe('typescript');
+      expect(retrievedSource.createdAt).toBeInstanceOf(Date);
+      expect(retrievedSource.updatedAt).toBeInstanceOf(Date);
+    });
+
+    it('should update a FileSource', async () => {
+      // Create initial file source data
+      const fileSourceData: Omit<FileSource, 'id' | 'createdAt' | 'updatedAt'> = {
+        type: SourceType.FILE,
+        label: 'Test File',
+        filePath: '/path/to/file.ts',
+        languageId: 'typescript'
+      };
+
+      // Add the source
+      const id = contextManager.addSource(fileSourceData);
+      
+      // Add a small delay to ensure timestamps will be different
+      await delay(5);
+
+      // Define the update data (matches UpdatableSourceData type)
+      const updateData: Partial<Omit<FileSource, 'id' | 'type' | 'createdAt' | 'updatedAt'>> = {
+        label: 'Updated File',
+        filePath: '/new/path/to/file.ts' // Should now be allowed in update
+      };
+
+      // Update the source
+      const updateResult = contextManager.updateSource(id, updateData);
+
+      // Verify update was successful
+      expect(updateResult).toBe(true);
+
+      // Retrieve the updated source
+      const updatedSource = contextManager.getSource(id) as FileSource; // Cast for specific property access
+
+      // Verify the source was updated correctly
+      expect(updatedSource.label).toBe('Updated File');
+      expect(updatedSource.filePath).toBe('/new/path/to/file.ts'); // Check updated specific property
+      expect(updatedSource.languageId).toBe('typescript'); // Should be unchanged
+      expect(updatedSource.updatedAt.getTime()).toBeGreaterThan(updatedSource.createdAt.getTime());
+    });
   });
 
-  it('should retrieve a context by ID', () => {
-    const data = { text: 'Hello World' };
-    const id = contextManager.createContext(data);
-    
-    const context = contextManager.getContext(id);
-    
-    expect(context).toBeDefined();
-    expect(context?.id).toBe(id);
-    expect(context?.data).toEqual(data);
-    expect(context?.createdAt).toBeInstanceOf(Date);
-    expect(context?.updatedAt).toBeInstanceOf(Date);
-  });
+  describe('Source Type Filtering', () => {
+    it('should get sources by type', () => {
+      // Add file sources
+      contextManager.addSource({
+        type: SourceType.FILE,
+        label: 'File 1',
+        filePath: '/path/to/file1.ts' // Allowed by CreatableSource
+      });
 
-  it('should return undefined when getting a non-existent context', () => {
-    const context = contextManager.getContext('non-existent-id');
-    expect(context).toBeUndefined();
-  });
+      contextManager.addSource({
+        type: SourceType.FILE,
+        label: 'File 2',
+        filePath: '/path/to/file2.ts' // Allowed by CreatableSource
+      });
 
-  it('should update an existing context', () => {
-    const initialData = { text: 'Hello World' };
-    const id = contextManager.createContext(initialData);
-    
-    const updatedData = { text: 'Updated Text' };
-    const updateResult = contextManager.updateContext(id, updatedData);
-    
-    expect(updateResult).toBe(true);
-    
-    const updatedContext = contextManager.getContext(id);
-    expect(updatedContext?.data).toEqual(updatedData);
-  });
+      // Add directory source
+      contextManager.addSource({
+        type: SourceType.DIRECTORY,
+        label: 'Dir 1',
+        dirPath: '/path/to/dir', // Allowed by CreatableSource
+        recursive: true,
+        respectGitignore: true
+      });
 
-  it('should return false when updating a non-existent context', () => {
-    const updateResult = contextManager.updateContext('non-existent-id', { text: 'Updated Text' });
-    expect(updateResult).toBe(false);
-  });
+      // Get file sources using the updated getSourcesByType
+      const fileSources = contextManager.getSourcesByType<FileSource>(SourceType.FILE);
 
-  it('should delete a context by ID', () => {
-    const data = { text: 'Hello World' };
-    const id = contextManager.createContext(data);
-    
-    const deleteResult = contextManager.deleteContext(id);
-    expect(deleteResult).toBe(true);
-    
-    const deletedContext = contextManager.getContext(id);
-    expect(deletedContext).toBeUndefined();
-  });
+      // Verify file sources are returned correctly typed
+      expect(fileSources).toBeInstanceOf(Array);
+      expect(fileSources.length).toBe(2);
+      expect(fileSources[0].type).toBe(SourceType.FILE);
+      expect(fileSources[1].type).toBe(SourceType.FILE);
+      // Can now safely access filePath
+      expect(fileSources[0].filePath).toBe('/path/to/file1.ts');
+      expect(fileSources[1].filePath).toBe('/path/to/file2.ts');
 
-  it('should return false when deleting a non-existent context', () => {
-    const deleteResult = contextManager.deleteContext('non-existent-id');
-    expect(deleteResult).toBe(false);
-  });
 
-  it('should get all contexts', () => {
-    contextManager.createContext({ text: 'First' });
-    contextManager.createContext({ text: 'Second' });
-    contextManager.createContext({ text: 'Third' });
-    
-    const allContexts = contextManager.getAllContexts();
-    
-    expect(allContexts).toBeInstanceOf(Array);
-    expect(allContexts.length).toBe(3);
-    expect(allContexts[0].data.text).toBe('First');
-    expect(allContexts[1].data.text).toBe('Second');
-    expect(allContexts[2].data.text).toBe('Third');
-  });
+      // Get directory sources using the updated getSourcesByType
+      const dirSources = contextManager.getSourcesByType<DirectorySource>(SourceType.DIRECTORY);
 
-  it('should clear all contexts', () => {
-    contextManager.createContext({ text: 'First' });
-    contextManager.createContext({ text: 'Second' });
-    
-    contextManager.clearAllContexts();
-    
-    const allContexts = contextManager.getAllContexts();
-    expect(allContexts.length).toBe(0);
+      // Verify directory sources are returned correctly typed
+      expect(dirSources).toBeInstanceOf(Array);
+      expect(dirSources.length).toBe(1);
+      expect(dirSources[0].type).toBe(SourceType.DIRECTORY);
+      // Can now safely access dirPath
+      expect(dirSources[0].dirPath).toBe('/path/to/dir');
+      expect(dirSources[0].recursive).toBe(true);
+    });
   });
 });
