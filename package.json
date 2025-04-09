@@ -1,49 +1,49 @@
 {
-  "name": "code-weaver",
-  "displayName": "code-weaver",
-  "description": "Code Weaver is a VS Code extension that helps developers intelligently build and manage context for AI interactionns.",
+  "name": "codeweaver",
+  "private": true,
   "version": "0.0.1",
-  "engines": {
-    "vscode": "^1.98.0"
-  },
-  "categories": [
-    "Other"
+  "type": "module",
+  "description": "Code Weaver - VS Code and Browser Extension with MCP integration",
+  "workspaces": [
+    "packages/*"
   ],
-  "activationEvents": [],
-  "main": "./dist/extension.js",
-  "contributes": {
-    "commands": [
-      {
-        "command": "code-weaver.helloWorld",
-        "title": "Hello World"
-      }
-    ]
-  },
   "scripts": {
-    "vscode:prepublish": "npm run package",
-    "compile": "npm run check-types && npm run lint && node esbuild.js",
-    "watch": "npm-run-all -p watch:*",
-    "watch:esbuild": "node esbuild.js --watch",
-    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
-    "package": "npm run check-types && npm run lint && node esbuild.js --production",
-    "compile-tests": "tsc -p . --outDir out",
-    "watch-tests": "tsc -p . -w --outDir out",
-    "pretest": "npm run compile-tests && npm run compile && npm run lint",
-    "check-types": "tsc --noEmit",
-    "lint": "eslint src",
-    "test": "vscode-test"
+    "build": "nx run-many --target=build --all",
+    "test": "nx run-many --target=test --all",
+    "dev": "nx run-many --target=dev --all",
+    "lint": "nx run-many --target=lint --all",
+    "clean": "nx run-many --target=clean --all",
+    "lint:fix": "nx run-many --target=lint --all -- --fix"
   },
   "devDependencies": {
+    "@babel/preset-react": "^7.26.3",
+    "@nx/eslint": "^20.7.1",
+    "@nx/js": "^20.7.1",
+    "@nx/vite": "^20.7.1",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.3.0",
+    "@types/jest": "^29.5.14",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.1",
+    "@types/uuid": "^10.0.0",
     "@types/vscode": "^1.98.0",
-    "@types/mocha": "^10.0.8",
-    "@types/node": "20.x",
-    "@typescript-eslint/eslint-plugin": "^8.7.0",
-    "@typescript-eslint/parser": "^8.7.0",
-    "eslint": "^9.11.1",
-    "esbuild": "^0.24.0",
-    "npm-run-all": "^4.1.5",
-    "typescript": "^5.6.2",
-    "@vscode/test-cli": "^0.0.10",
-    "@vscode/test-electron": "^2.4.1"
+    "@types/webextension-polyfill": "^0.12.3",
+    "@types/ws": "^8.18.1",
+    "@vscode/test-electron": "^2.4.1",
+    "eslint": "^9.23.0",
+    "eslint-plugin-import": "^2.31.0",
+    "eslint-plugin-react": "^7.37.5",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
+    "nx": "^20.7.1",
+    "ts-jest": "^29.3.1",
+    "typescript": "^5.8.2",
+    "typescript-eslint": "^8.29.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "dependencies": {
+    "eslint-plugin-react-hooks": "^5.2.0"
   }
 }

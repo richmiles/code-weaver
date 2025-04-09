@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.eslint.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "allowJs": true
+  },
+  "include": [
+    "src/**/*",
+    "tests/**/*",
+    "*.js",
+    "*.config.js"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ],
+  "references": [
+    { "path": "../core" }
+  ]
+}

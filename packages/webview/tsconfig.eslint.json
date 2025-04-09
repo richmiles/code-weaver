@@ -1,0 +1,23 @@
+{
+    "extends": "../../tsconfig.eslint.base.json",
+    "compilerOptions": {
+      "jsx": "react-jsx",
+      "lib": ["DOM", "DOM.Iterable", "ESNext"],
+      "isolatedModules": true,
+      "noEmit": true,
+      "allowJs": true
+    },
+    "include": [
+      "src/**/*",
+      "tests/**/*",
+      "*.js",
+      "*.config.js"
+    ],
+    "exclude": [
+      "node_modules",
+      "dist"
+    ],
+    "references": [
+      { "path": "../core" }
+    ]
+  }
