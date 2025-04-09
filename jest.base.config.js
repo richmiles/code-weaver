@@ -1,27 +1,23 @@
-/**
- * Base Jest configuration to be extended by each package
- */
-export default {
-  transform: {
-    '^.+\\.(t|j)sx?$': ['ts-jest', {
-      useESM: true,
-    }],
-  },
-  extensionsToTreatAsEsm: ['.ts', '.tsx'],
+// jest.base.config.js
+const config = {
+  preset: 'ts-jest/presets/js-with-ts-esm',
+  testEnvironment: 'node',
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
     '@codeweaver/core/(.*)': '<rootDir>/../core/src/$1',
     '@codeweaver/core': '<rootDir>/../core/src'
   },
-  coverageDirectory: '<rootDir>/coverage',
-  testEnvironment: 'node',
+  transform: {
+    '^.+\\.(ts|tsx)$': ['ts-jest', {
+      useESM: true,
+      tsconfig: '<rootDir>/tsconfig.tests.json',
+    }]
+  },
+  extensionsToTreatAsEsm: ['.ts', '.tsx'],
   testMatch: ['**/tests/**/*.test.[jt]s?(x)'],
-  collectCoverageFrom: [
-    '<rootDir>/src/**/*.{ts,tsx}',
-    '!<rootDir>/src/**/*.d.ts',
-    '!<rootDir>/src/**/*.stories.{ts,tsx}',
-    '!<rootDir>/src/**/index.{ts,tsx}'
-  ],
+  coverageDirectory: '<rootDir>/coverage',
   coverageReporters: ['text', 'lcov'],
   roots: ['<rootDir>/tests'],
 };
+
+export default config;

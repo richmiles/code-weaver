@@ -1,7 +1,7 @@
 // contextManager.test.ts
 import {
   FileSource,
-  DirectorySource, // Added import
+  DirectorySource,
   SourceType
 } from '@codeweaver/core';
 

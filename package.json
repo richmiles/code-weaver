@@ -16,6 +16,7 @@
     "lint:fix": "nx run-many --target=lint --all -- --fix"
   },
   "devDependencies": {
+    "@babel/preset-react": "^7.26.3",
     "@nx/eslint": "^20.7.1",
     "@nx/js": "^20.7.1",
     "@nx/vite": "^20.7.1",

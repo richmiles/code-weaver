@@ -12,6 +12,7 @@
         "**/jest.config.js",
       ]
     },
+    "jest.jestCommandLine": "npx nx run-many --target test --all",
     "codeLoom.connectionCode": "875210",
     "codeLoom.wsPort": 64605
   }
