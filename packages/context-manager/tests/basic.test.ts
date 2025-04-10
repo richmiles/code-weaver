@@ -169,12 +169,14 @@ import {
         label: 'File 1',
         filePath: '/path/to/file1.ts'
       });
-  
+      expect(fileId1).toBeDefined();
+      
       const fileId2 = contextManager.addSource({
         type: SourceType.FILE,
         label: 'File 2',
         filePath: '/path/to/file2.ts'
       });
+      expect(fileId2).toBeDefined();
   
       // Get all sources
       const allSources = contextManager.getAllSources();

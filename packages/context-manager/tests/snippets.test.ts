@@ -1,6 +1,5 @@
 // snippets.test.ts
 import {
-    FileSource,
     SnippetSource,
     SourceType
   } from '@codeweaver/core';

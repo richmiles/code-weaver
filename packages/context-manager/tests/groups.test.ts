@@ -1,6 +1,5 @@
 // groups.test.ts
 import {
-    FileSource,
     GroupSource,
     SourceType
   } from '@codeweaver/core';
