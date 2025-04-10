@@ -43,6 +43,49 @@ export class ContextManager {
   }
 
   /**
+   * Validates that a snippet has a valid parent file.
+   * 
+   * @param snippetData Data for a snippet source being added or updated
+   * @returns True if the snippet has a valid parent file, false otherwise
+   */
+  validateSnippetSource(snippetData: Omit<SnippetSource, 'id' | 'createdAt' | 'updatedAt'>): boolean {
+    // Check if the parent file exists
+    const parentFile = this.getSource(snippetData.sourceFileId);
+    
+    // Validate that the parent exists and is a file
+    if (!parentFile || parentFile.type !== SourceType.FILE) {
+      return false;
+    }
+    
+    // Validate line numbers
+    if (snippetData.startLine < 0 || snippetData.endLine < snippetData.startLine) {
+      return false;
+    }
+    
+    return true;
+  }
+
+  /**
+   * Gets all snippets associated with a specific file.
+   * 
+   * @param fileId The ID of the file to get snippets for
+   * @returns Array of snippet sources for the file, or undefined if the file doesn't exist or isn't a file
+   */
+  getSnippetsForFile(fileId: string): SnippetSource[] | undefined {
+    // Get the file source
+    const fileSource = this.getSource(fileId);
+    
+    // Check if it exists and is a file
+    if (!fileSource || fileSource.type !== SourceType.FILE) {
+      return undefined;
+    }
+    
+    // Get all snippets from the sources map and filter by the parent file ID
+    const snippets = this.getSourcesByType<SnippetSource>(SourceType.SNIPPET);
+    return snippets.filter(snippet => snippet.sourceFileId === fileId);
+  }
+
+  /**
    * Adds a new source to the context manager.
    *
    * @param sourceData The source data to store
@@ -85,6 +128,18 @@ export class ContextManager {
 
     if (!source) {
       return false;
+    }
+    
+    // If updating a snippet's parent file, validate the new parent
+    if (source.type === SourceType.SNIPPET && ('sourceFileId' in data || 'startLine' in data || 'endLine' in data)) {
+      const updatedData = {
+        ...source,
+        ...data
+      } as Omit<SnippetSource, 'id' | 'createdAt' | 'updatedAt'>;
+      
+      if (!this.validateSnippetSource(updatedData)) {
+        return false;
+      }
     }
 
     const updatedSource: ContextSource = {
