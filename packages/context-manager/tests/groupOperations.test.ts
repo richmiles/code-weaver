@@ -1,6 +1,5 @@
 // packages/context-manager/tests/groupOperations.test.ts
 import {
-    FileSource,
     GroupSource,
     SourceType
   } from '@codeweaver/core';
