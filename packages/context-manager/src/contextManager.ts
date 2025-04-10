@@ -8,19 +8,19 @@ import {
   SourceType
 } from '@codeweaver/core';
 import { v4 as uuidv4 } from 'uuid';
+import { resolveGroupMembers } from './groupUtils';
+import { getSnippetsForFile } from './snippetUtils';
+import { validateSnippetSource } from './validators';
 
 // Define the type for creatable sources (specific types without generated fields)
-// This union represents the data needed to create any type of source.
-type CreatableSource =
+export type CreatableSource =
   | Omit<FileSource, 'id' | 'createdAt' | 'updatedAt'>
   | Omit<DirectorySource, 'id' | 'createdAt' | 'updatedAt'>
   | Omit<SnippetSource, 'id' | 'createdAt' | 'updatedAt'>
   | Omit<GroupSource, 'id' | 'createdAt' | 'updatedAt'>;
 
 // Define the type for updatable source data
-// This union represents the possible partial updates for any source type.
-// It prevents updating 'id', 'type', and 'createdAt'.
-type UpdatableSourceData =
+export type UpdatableSourceData =
   | Partial<Omit<FileSource, 'id' | 'type' | 'createdAt' | 'updatedAt'>>
   | Partial<Omit<DirectorySource, 'id' | 'type' | 'createdAt' | 'updatedAt'>>
   | Partial<Omit<SnippetSource, 'id' | 'type' | 'createdAt' | 'updatedAt'>>
@@ -45,20 +45,7 @@ export class ContextManager {
    * @returns True if the snippet has a valid parent file, false otherwise
    */
   validateSnippetSource(snippetData: Omit<SnippetSource, 'id' | 'createdAt' | 'updatedAt'>): boolean {
-    // Check if the parent file exists
-    const parentFile = this.getSource(snippetData.sourceFileId);
-    
-    // Validate that the parent exists and is a file
-    if (!parentFile || parentFile.type !== SourceType.FILE) {
-      return false;
-    }
-    
-    // Validate line numbers
-    if (snippetData.startLine < 0 || snippetData.endLine < snippetData.startLine) {
-      return false;
-    }
-    
-    return true;
+    return validateSnippetSource(snippetData, this.getSource.bind(this));
   }
 
   /**
@@ -68,17 +55,18 @@ export class ContextManager {
    * @returns Array of snippet sources for the file, or undefined if the file doesn't exist or isn't a file
    */
   getSnippetsForFile(fileId: string): SnippetSource[] | undefined {
-    // Get the file source
-    const fileSource = this.getSource(fileId);
-    
-    // Check if it exists and is a file
-    if (!fileSource || fileSource.type !== SourceType.FILE) {
-      return undefined;
-    }
-    
-    // Get all snippets from the sources map and filter by the parent file ID
-    const snippets = this.getSourcesByType<SnippetSource>(SourceType.SNIPPET);
-    return snippets.filter(snippet => snippet.sourceFileId === fileId);
+    return getSnippetsForFile(fileId, this.getSource.bind(this), this.getAllSources.bind(this));
+  }
+
+  /**
+   * Resolves all member sources for a group, including nested groups.
+   * 
+   * @param groupId The ID of the group to resolve members for
+   * @param processedGroups Optional set of group IDs already processed (used to detect circular references)
+   * @returns Array of all member sources, or undefined if the group doesn't exist or isn't a group
+   */
+  resolveGroupMembers(groupId: string, processedGroups: Set<string> = new Set()): ContextSource[] | undefined {
+    return resolveGroupMembers(groupId, this.getSource.bind(this), processedGroups);
   }
 
   /**
@@ -152,11 +140,6 @@ export class ContextManager {
       }
     }
 
-    // The spread operator correctly merges the partial data.
-    // TypeScript ensures 'data' only contains valid fields for *some*
-    // source type (excluding id, type, createdAt, updatedAt).
-    // We rely on the caller to provide data relevant to the *actual* type
-    // of the source being updated.
     const updatedSource: ContextSource = {
       ...source,
       ...data,
@@ -204,67 +187,6 @@ export class ContextManager {
   getSourcesByType<T extends ContextSource>(type: T['type']): T[] {
     // Filter sources by type and use a type assertion for the correct return type.
     return this.getAllSources().filter(source => source.type === type) as T[];
-  }
-
-  /**
-   * Resolves all member sources for a group, including nested groups.
-   * 
-   * @param groupId The ID of the group to resolve members for
-   * @param processedGroups Optional set of group IDs already processed (used to detect circular references)
-   * @returns Array of all member sources, or undefined if the group doesn't exist or isn't a group
-   */
-  resolveGroupMembers(groupId: string, processedGroups: Set<string> = new Set()): ContextSource[] | undefined {
-    // Get the group source
-    const groupSource = this.getSource(groupId);
-    
-    // Check if it exists and is a group
-    if (!groupSource || groupSource.type !== SourceType.GROUP) {
-      return undefined;
-    }
-    
-    // Cast to GroupSource to access memberSourceIds
-    const group = groupSource as GroupSource;
-    
-    // Initialize the result array (will only contain non-group sources)
-    const resolvedMembers: ContextSource[] = [];
-    
-    // Add this group to the set of processed groups to detect circular references
-    processedGroups.add(groupId);
-    
-    // Process each member
-    for (const memberId of group.memberSourceIds) {
-      // Get the member source
-      const memberSource = this.getSource(memberId);
-      
-      // Skip if member doesn't exist
-      if (!memberSource) {
-        continue;
-      }
-      
-      // If the member is a group and hasn't been processed already
-      if (memberSource.type === SourceType.GROUP) {
-        if (!processedGroups.has(memberId)) {
-          // Create a new set to track processed groups to avoid modifying the shared set
-          const nestedProcessedGroups = new Set(processedGroups);
-          
-          // Recursively resolve members of the nested group
-          const nestedMembers = this.resolveGroupMembers(memberId, nestedProcessedGroups);
-          
-          // Add the nested members to the result if they exist
-          if (nestedMembers) {
-            for (const member of nestedMembers) {
-              resolvedMembers.push(member);
-            }
-          }
-        }
-      } 
-      // Only add non-group sources directly
-      else {
-        resolvedMembers.push(memberSource);
-      }
-    }
-    
-    return resolvedMembers;
   }
 
   /**
