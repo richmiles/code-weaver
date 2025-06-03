@@ -1,5 +1,24 @@
 import { ContextSource } from './ContextSource';
+import { GitStatus } from './FileSource';
 import { SourceType } from './SourceType';
+
+export interface DirectoryEntry {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+  size?: number;
+  lastModified?: Date;
+  gitStatus?: GitStatus;
+}
+
+export interface DirectoryMetadata {
+  totalFiles: number;
+  totalDirectories: number;
+  totalSize: number; // Total size in bytes
+  lastScanned: Date;
+  gitRepository?: boolean; // Whether this directory is in a git repo
+  packageFile?: string; // package.json, Cargo.toml, etc.
+}
 
 export interface DirectorySource extends ContextSource {
   type: SourceType.DIRECTORY;
@@ -8,5 +27,6 @@ export interface DirectorySource extends ContextSource {
   respectGitignore: boolean;
   includePatterns?: string[];
   excludePatterns?: string[];
-  listing?: string[]; // Optional cached directory listing
+  listing?: DirectoryEntry[]; // Enhanced directory listing
+  directoryMetadata?: DirectoryMetadata;
 }
