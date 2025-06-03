@@ -6,7 +6,9 @@
   },
   "include": [
     "src/**/*",
-    "tests/**/*"
+    "tests/**/*",
+    "*.js",
+    "*.config.js"
   ],
   "exclude": [
     "node_modules",
