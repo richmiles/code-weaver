@@ -1,4 +1,5 @@
 // packages/websocket-server/tests/websocket.test.ts
+import { MessageType, SourceType } from '@codeweaver/core';
 import { WebSocket } from 'ws';
 import { WebSocketServer } from '../src/websocketServer';
 
@@ -24,7 +25,7 @@ describe('WebSocketServer', () => {
     expect(server.isRunning()).toBe(false);
   });
 
-  it('should accept connections and respond to messages', (done) => {
+  it('should accept connections and send welcome message', (done) => {
     server.start();
     
     // Create a client to test the connection
@@ -32,27 +33,21 @@ describe('WebSocketServer', () => {
     
     // Setup event handlers
     client.on('open', () => {
-      // Send a test message
-      client.send('Hello Server');
+      // Wait for welcome message
     });
     
-    // Track received messages
-    const messages: string[] = [];
-    
     client.on('message', (data) => {
-      messages.push(data.toString());
+      const response = JSON.parse(data.toString());
       
-      // Check if we've received both expected messages
-      if (messages.length === 2) {
-        // Check welcome message
-        expect(messages[0]).toBe('Connected to CodeWeaver WebSocket Server');
-        // Check echo response
-        expect(messages[1]).toBe('Echo: Hello Server');
-        
-        // Close the connection
-        client.close();
-        done();
-      }
+      // Check welcome message
+      expect(response.id).toBe('welcome');
+      expect(response.success).toBe(true);
+      expect(response.data.message).toBe('Connected to CodeWeaver WebSocket Server');
+      expect(response.data.clientId).toBeDefined();
+      
+      // Close the connection
+      client.close();
+      done();
     });
     
     client.on('error', (err) => {
@@ -60,75 +55,113 @@ describe('WebSocketServer', () => {
     });
   });
 
-  it('should broadcast messages to all clients', (done) => {
+  it('should handle GET_SOURCES message', (done) => {
     server.start();
     
-    // Connect two clients
-    const client1 = new WebSocket(`ws://localhost:${TEST_PORT}`);
-    const client2 = new WebSocket(`ws://localhost:${TEST_PORT}`);
+    const client = new WebSocket(`ws://localhost:${TEST_PORT}`);
     
-    let client1Ready = false;
-    let client2Ready = false;
-    let broadcastSent = false;
-    
-    // Wait for both to be ready
-    function checkBroadcast() {
-      if (client1Ready && client2Ready && !broadcastSent) {
-        broadcastSent = true;
-        // Broadcast a message
-        server.broadcast('Broadcast test');
-      }
-    }
-    
-    // Client 1 setup
-    let client1ReceivedBroadcast = false;
-    client1.on('open', () => {
+    client.on('open', () => {
       // Skip welcome message
-      client1.once('message', () => {
-        client1Ready = true;
-        checkBroadcast();
+      client.once('message', () => {
+        // Send GET_SOURCES message
+        const message = {
+          type: MessageType.GET_SOURCES,
+          id: 'test-1',
+          timestamp: new Date()
+        };
         
-        // Listen for broadcast
-        client1.on('message', (data) => {
-          if (data.toString() === 'Broadcast test') {
-            client1ReceivedBroadcast = true;
-            checkComplete();
-          }
+        client.send(JSON.stringify(message));
+        
+        // Listen for response
+        client.on('message', (data) => {
+          const response = JSON.parse(data.toString());
+          
+          expect(response.id).toBe('test-1');
+          expect(response.success).toBe(true);
+          expect(Array.isArray(response.data)).toBe(true);
+          expect(response.data.length).toBe(0); // Initially empty
+          
+          client.close();
+          done();
         });
       });
     });
     
-    // Client 2 setup
-    let client2ReceivedBroadcast = false;
-    client2.on('open', () => {
-      // Skip welcome message
-      client2.once('message', () => {
-        client2Ready = true;
-        checkBroadcast();
-        
-        // Listen for broadcast
-        client2.on('message', (data) => {
-          if (data.toString() === 'Broadcast test') {
-            client2ReceivedBroadcast = true;
-            checkComplete();
-          }
-        });
-      });
-    });
-    
-    function checkComplete() {
-      if (client1ReceivedBroadcast && client2ReceivedBroadcast) {
-        client1.close();
-        client2.close();
-        done();
-      }
-    }
-    
-    // Handle errors
-    client1.on('error', (err) => done(err));
-    client2.on('error', (err) => done(err));
+    client.on('error', (err) => done(err));
   });
-  
+
+  it('should handle ADD_SOURCE message', (done) => {
+    server.start();
+    
+    const client = new WebSocket(`ws://localhost:${TEST_PORT}`);
+    
+    client.on('open', () => {
+      // Skip welcome message
+      client.once('message', () => {
+        // Send ADD_SOURCE message
+        const sourceData = {
+          type: SourceType.FILE,
+          name: 'test.js',
+          filePath: 'test.js'
+        };
+        
+        const message = {
+          type: MessageType.ADD_SOURCE,
+          id: 'test-add',
+          timestamp: new Date(),
+          payload: sourceData
+        };
+        
+        client.send(JSON.stringify(message));
+        
+        // Listen for response
+        client.on('message', (data) => {
+          const response = JSON.parse(data.toString());
+          
+          expect(response.id).toBe('test-add');
+          expect(response.success).toBe(true);
+          expect(response.data.sourceId).toBeDefined();
+          expect(response.data.source).toBeDefined();
+          expect(response.data.source.type).toBe(SourceType.FILE);
+          expect(response.data.source.name).toBe('test.js');
+          
+          client.close();
+          done();
+        });
+      });
+    });
+    
+    client.on('error', (err) => done(err));
+  });
+
+  it('should handle invalid JSON message', (done) => {
+    server.start();
+    
+    const client = new WebSocket(`ws://localhost:${TEST_PORT}`);
+    
+    client.on('open', () => {
+      // Skip welcome message
+      client.once('message', () => {
+        // Send invalid JSON
+        client.send('invalid json');
+        
+        // Listen for error response
+        client.on('message', (data) => {
+          const response = JSON.parse(data.toString());
+          
+          expect(response.id).toBe('unknown');
+          expect(response.success).toBe(false);
+          expect(response.error).toBe('Invalid JSON message format');
+          
+          client.close();
+          done();
+        });
+      });
+    });
+    
+    client.on('error', (err) => done(err));
+  });
+
   it('should track client connections correctly', (done) => {
     server.start();
     
@@ -163,95 +196,81 @@ describe('WebSocketServer', () => {
     client.on('error', (err) => done(err));
   });
 
-  it('should exclude client when broadcasting with exclusion', (done) => {
+  it('should handle event subscription and broadcasting', (done) => {
     server.start();
     
     // Connect two clients
     const client1 = new WebSocket(`ws://localhost:${TEST_PORT}`);
     const client2 = new WebSocket(`ws://localhost:${TEST_PORT}`);
     
-    // Set up the necessary tracking variables
     let client1Ready = false;
     let client2Ready = false;
-    let testStarted = false;
+    let eventReceived = false;
     
-    // Set up message tracking
-    const client1Messages: string[] = [];
-    const client2Messages: string[] = [];
-    
-    // Client 1 setup
+    // Client 1 - will subscribe to events
     client1.on('open', () => {
-      // Skip welcome message and mark as ready
       client1.once('message', () => {
-        client1Ready = true;
-        checkTestStart();
+        // Subscribe to events
+        const subscribeMessage = {
+          type: MessageType.SUBSCRIBE_EVENTS,
+          id: 'subscribe-1',
+          timestamp: new Date()
+        };
+        
+        client1.send(JSON.stringify(subscribeMessage));
+        
+        client1.on('message', (data) => {
+          const response = JSON.parse(data.toString());
+          
+          if (response.id === 'subscribe-1') {
+            expect(response.success).toBe(true);
+            client1Ready = true;
+            checkAddSource();
+          } else if (response.type === MessageType.EVENT && !eventReceived) {
+            // This should be the event broadcast
+            eventReceived = true;
+            expect(response.payload).toBeDefined();
+            expect(response.payload.type).toBe('source_added');
+            
+            client1.close();
+            client2.close();
+            done();
+          }
+        });
       });
     });
     
-    // Record all messages received by client1
-    client1.on('message', (data) => {
-      const message = data.toString();
-      client1Messages.push(message);
-    });
-    
-    // Client 2 setup
+    // Client 2 - will add a source to trigger event
     client2.on('open', () => {
-      // Skip welcome message and mark as ready
       client2.once('message', () => {
         client2Ready = true;
-        checkTestStart();
+        checkAddSource();
       });
     });
     
-    // Record all messages received by client2
-    client2.on('message', (data) => {
-      const message = data.toString();
-      client2Messages.push(message);
-      
-      // If this is the broadcast message, check results
-      if (message === 'Exclusive broadcast' && testStarted) {
-        // Give some time for any messages to arrive at client1
-        setTimeout(() => {
-          const client1ReceivedBroadcast = client1Messages.includes('Exclusive broadcast');
-          const client2ReceivedBroadcast = client2Messages.includes('Exclusive broadcast');
-          
-          expect(client1ReceivedBroadcast).toBe(false);
-          expect(client2ReceivedBroadcast).toBe(true);
-          
-          client1.close();
-          client2.close();
-          done();
-        }, 100);
+    function checkAddSource() {
+      if (client1Ready && client2Ready) {
+        // Add a source from client2 to trigger event
+        const sourceData = {
+          type: SourceType.FILE,
+          name: 'broadcast-test.js',
+          filePath: 'broadcast-test.js'
+        };
+        
+        const message = {
+          type: MessageType.ADD_SOURCE,
+          id: 'test-broadcast',
+          timestamp: new Date(),
+          payload: sourceData
+        };
+        
+        client2.send(JSON.stringify(message));
       }
-    });
+    }
     
     // Handle errors
     client1.on('error', (err) => done(err));
     client2.on('error', (err) => done(err));
-    
-    // Check if both clients are ready to start the test
-    function checkTestStart() {
-      if (client1Ready && client2Ready && !testStarted) {
-        testStarted = true;
-        
-        // Wait a moment for both connections to be fully established
-        setTimeout(() => {
-          // Get all client IDs from the server
-          const clientIds = Array.from((server as any).clients.keys());
-          
-          // For this test, we'll exclude the first client (which should be client1)
-          // We're using timeout to ensure the welcome message is fully processed
-          server.broadcast('Exclusive broadcast', clientIds[0] as string);
-        }, 100);
-      }
-    }
-  });
-  
-  it('should handle server not started error', () => {
-    // Don't start the server
-    expect(() => {
-      server.broadcast('This should fail');
-    }).toThrow('Server not started');
   });
 
   it('should handle ping/pong for connection health', (done) => {

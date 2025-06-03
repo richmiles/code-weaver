@@ -1,25 +1,47 @@
 // packages/websocket-server/src/websocketServer.ts
+import * as fs from 'fs';
+import * as path from 'path';
+import { ContextManager, CreatableSource, UpdatableSourceData } from '@codeweaver/context-manager';
+import { 
+  Message, 
+  MessageType, 
+  ContextEvent, 
+  EventType, 
+  FileSource,
+  SourceType 
+} from '@codeweaver/core';
 import { v4 as uuidv4 } from 'uuid';
 import { WebSocket, WebSocketServer as WSServer } from 'ws';
 
-// Basic server configuration
+// Server configuration
 export interface ServerConfig {
   port: number;
   pingInterval?: number;
   enableLogging?: boolean;
+  workspaceRoot?: string;
 }
 
 // Default configuration
 const DEFAULT_CONFIG: ServerConfig = {
   port: 8080,
   pingInterval: 30000,
-  enableLogging: false
+  enableLogging: false,
+  workspaceRoot: process.cwd()
 };
 
 // Extended WebSocket type with our custom properties
 export interface CodeWeaverWebSocket extends WebSocket {
   clientId: string;
   isAlive: boolean;
+  subscribedToEvents: boolean;
+}
+
+// Response interface for message handling
+interface MessageResponse {
+  id: string;
+  success: boolean;
+  data?: unknown;
+  error?: string;
 }
 
 export class WebSocketServer {
@@ -27,9 +49,11 @@ export class WebSocketServer {
   private clients: Map<string, CodeWeaverWebSocket> = new Map();
   private pingInterval: NodeJS.Timeout | null = null;
   private config: ServerConfig;
+  private contextManager: ContextManager;
   
   constructor(config: Partial<ServerConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
+    this.contextManager = new ContextManager();
   }
   
   /**
@@ -74,27 +98,34 @@ export class WebSocketServer {
   }
   
   /**
-   * Broadcasts a message to all connected clients
+   * Broadcasts an event to all subscribed clients
    */
-  broadcast(message: string, excludeClientId?: string): number {
-    if (!this.server) {
-      throw new Error('Server not started');
-    }
-    
-    let count = 0;
+  private broadcastEvent(event: ContextEvent, excludeClientId?: string): void {
+    const eventMessage: Message = {
+      type: MessageType.EVENT,
+      id: uuidv4(),
+      timestamp: new Date(),
+      payload: event
+    };
     
     this.clients.forEach((client, clientId) => {
       if (excludeClientId && clientId === excludeClientId) {
         return;
       }
       
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(message);
-        count++;
+      if (client.readyState === WebSocket.OPEN && client.subscribedToEvents) {
+        client.send(JSON.stringify(eventMessage));
       }
     });
-    
-    return count;
+  }
+  
+  /**
+   * Sends a response message to a specific client
+   */
+  private sendResponse(client: CodeWeaverWebSocket, response: MessageResponse): void {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(JSON.stringify(response));
+    }
   }
   
   /**
@@ -118,6 +149,7 @@ export class WebSocketServer {
     const client = ws as CodeWeaverWebSocket;
     client.isAlive = true;
     client.clientId = uuidv4();
+    client.subscribedToEvents = false;
     
     this.clients.set(client.clientId, client);
     
@@ -127,14 +159,16 @@ export class WebSocketServer {
     
     // Set up message handler
     client.on('message', (data) => {
-      const message = data.toString();
-      
-      if (this.config.enableLogging) {
-        console.error(`Message from ${client.clientId}: ${message}`);
+      try {
+        const message: Message = JSON.parse(data.toString());
+        this.handleMessage(client, message);
+      } catch {
+        this.sendResponse(client, {
+          id: 'unknown',
+          success: false,
+          error: 'Invalid JSON message format'
+        });
       }
-      
-      // Default behavior: echo back the message
-      client.send(`Echo: ${message}`);
     });
     
     // Set up close handler
@@ -152,7 +186,446 @@ export class WebSocketServer {
     });
     
     // Send welcome message
-    client.send('Connected to CodeWeaver WebSocket Server');
+    this.sendResponse(client, {
+      id: 'welcome',
+      success: true,
+      data: { message: 'Connected to CodeWeaver WebSocket Server', clientId: client.clientId }
+    });
+  }
+  
+  /**
+   * Handles incoming messages from clients
+   */
+  private async handleMessage(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    if (this.config.enableLogging) {
+      console.error(`Message from ${client.clientId}:`, message.type);
+    }
+
+    try {
+      switch (message.type) {
+        case MessageType.GET_SOURCES:
+          await this.handleGetSources(client, message);
+          break;
+          
+        case MessageType.ADD_SOURCE:
+          await this.handleAddSource(client, message);
+          break;
+          
+        case MessageType.UPDATE_SOURCE:
+          await this.handleUpdateSource(client, message);
+          break;
+          
+        case MessageType.DELETE_SOURCE:
+          await this.handleDeleteSource(client, message);
+          break;
+          
+        case MessageType.GET_ACTIVE_CONTEXT:
+          await this.handleGetActiveContext(client, message);
+          break;
+          
+        case MessageType.SET_ACTIVE_CONTEXT:
+          await this.handleSetActiveContext(client, message);
+          break;
+          
+        case MessageType.GET_SOURCE_CONTENT:
+          await this.handleGetSourceContent(client, message);
+          break;
+          
+        case MessageType.UPDATE_SOURCE_CONTENT:
+          await this.handleUpdateSourceContent(client, message);
+          break;
+          
+        case MessageType.CLEAR_SOURCE_CONTENT:
+          await this.handleClearSourceContent(client, message);
+          break;
+          
+        case MessageType.SUBSCRIBE_EVENTS:
+          await this.handleSubscribeEvents(client, message);
+          break;
+          
+        default:
+          this.sendResponse(client, {
+            id: message.id,
+            success: false,
+            error: `Unknown message type: ${message.type}`
+          });
+      }
+    } catch (error) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred'
+      });
+    }
+  }
+  
+  /**
+   * Handle GET_SOURCES message
+   */
+  private async handleGetSources(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    const sources = this.contextManager.getAllSources();
+    
+    this.sendResponse(client, {
+      id: message.id,
+      success: true,
+      data: sources
+    });
+  }
+  
+  /**
+   * Handle ADD_SOURCE message
+   */
+  private async handleAddSource(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    const sourceData = message.payload as CreatableSource;
+    
+    if (!sourceData) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: 'Source data is required'
+      });
+      return;
+    }
+    
+    const sourceId = this.contextManager.addSource(sourceData);
+    
+    if (!sourceId) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: 'Failed to add source (validation failed)'
+      });
+      return;
+    }
+    
+    const addedSource = this.contextManager.getSource(sourceId);
+    
+    this.sendResponse(client, {
+      id: message.id,
+      success: true,
+      data: { sourceId, source: addedSource }
+    });
+    
+    // Broadcast event
+    this.broadcastEvent({
+      type: EventType.SOURCE_ADDED,
+      sourceId,
+      sourceType: sourceData.type,
+      timestamp: new Date(),
+      data: addedSource
+    }, client.clientId);
+  }
+  
+  /**
+   * Handle UPDATE_SOURCE message
+   */
+  private async handleUpdateSource(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    const { sourceId, data } = message.payload as { sourceId: string; data: UpdatableSourceData };
+    
+    if (!sourceId || !data) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: 'Source ID and update data are required'
+      });
+      return;
+    }
+    
+    const success = this.contextManager.updateSource(sourceId, data);
+    
+    if (!success) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: 'Failed to update source (not found or validation failed)'
+      });
+      return;
+    }
+    
+    const updatedSource = this.contextManager.getSource(sourceId);
+    
+    this.sendResponse(client, {
+      id: message.id,
+      success: true,
+      data: updatedSource
+    });
+    
+    // Broadcast event
+    this.broadcastEvent({
+      type: EventType.SOURCE_UPDATED,
+      sourceId,
+      sourceType: updatedSource?.type,
+      timestamp: new Date(),
+      data: updatedSource
+    }, client.clientId);
+  }
+  
+  /**
+   * Handle DELETE_SOURCE message
+   */
+  private async handleDeleteSource(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    const { sourceId } = message.payload as { sourceId: string };
+    
+    if (!sourceId) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: 'Source ID is required'
+      });
+      return;
+    }
+    
+    const sourceToDelete = this.contextManager.getSource(sourceId);
+    const success = this.contextManager.deleteSource(sourceId);
+    
+    this.sendResponse(client, {
+      id: message.id,
+      success,
+      data: { sourceId }
+    });
+    
+    if (success && sourceToDelete) {
+      // Broadcast event
+      this.broadcastEvent({
+        type: EventType.SOURCE_DELETED,
+        sourceId,
+        sourceType: sourceToDelete.type,
+        timestamp: new Date()
+      }, client.clientId);
+    }
+  }
+  
+  /**
+   * Handle GET_ACTIVE_CONTEXT message
+   */
+  private async handleGetActiveContext(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    const activeSources = this.contextManager.getActiveContextSources();
+    
+    this.sendResponse(client, {
+      id: message.id,
+      success: true,
+      data: activeSources
+    });
+  }
+  
+  /**
+   * Handle SET_ACTIVE_CONTEXT message
+   */
+  private async handleSetActiveContext(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    const { sourceIds } = message.payload as { sourceIds: string[] };
+    
+    if (!Array.isArray(sourceIds)) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: 'Source IDs array is required'
+      });
+      return;
+    }
+    
+    const success = this.contextManager.setActiveContext(sourceIds);
+    
+    this.sendResponse(client, {
+      id: message.id,
+      success,
+      data: { sourceIds }
+    });
+    
+    if (success) {
+      // Broadcast event
+      this.broadcastEvent({
+        type: EventType.ACTIVE_CONTEXT_CHANGED,
+        timestamp: new Date(),
+        data: { sourceIds }
+      }, client.clientId);
+    }
+  }
+  
+  /**
+   * Handle GET_SOURCE_CONTENT message
+   */
+  private async handleGetSourceContent(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    const { sourceId } = message.payload as { sourceId: string };
+    
+    if (!sourceId) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: 'Source ID is required'
+      });
+      return;
+    }
+    
+    const source = this.contextManager.getSource(sourceId);
+    
+    if (!source) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: 'Source not found'
+      });
+      return;
+    }
+    
+    try {
+      let content: string | undefined;
+      
+      if (source.type === SourceType.FILE) {
+        const fileSource = source as FileSource;
+        const filePath = path.resolve(this.config.workspaceRoot!, fileSource.filePath);
+        content = await fs.promises.readFile(filePath, 'utf8');
+      }
+      
+      this.sendResponse(client, {
+        id: message.id,
+        success: true,
+        data: { sourceId, content }
+      });
+    } catch (error) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: `Failed to read file content: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
+  }
+  
+  /**
+   * Handle UPDATE_SOURCE_CONTENT message
+   */
+  private async handleUpdateSourceContent(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    const { sourceId, content } = message.payload as { sourceId: string; content: string };
+    
+    if (!sourceId || typeof content !== 'string') {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: 'Source ID and content are required'
+      });
+      return;
+    }
+    
+    const source = this.contextManager.getSource(sourceId);
+    
+    if (!source) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: 'Source not found'
+      });
+      return;
+    }
+    
+    if (source.type !== SourceType.FILE) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: 'Content updates only supported for file sources'
+      });
+      return;
+    }
+    
+    try {
+      const fileSource = source as FileSource;
+      const filePath = path.resolve(this.config.workspaceRoot!, fileSource.filePath);
+      await fs.promises.writeFile(filePath, content, 'utf8');
+      
+      this.sendResponse(client, {
+        id: message.id,
+        success: true,
+        data: { sourceId }
+      });
+      
+      // Broadcast event
+      this.broadcastEvent({
+        type: EventType.CONTENT_UPDATED,
+        sourceId,
+        sourceType: source.type,
+        timestamp: new Date(),
+        data: { content }
+      }, client.clientId);
+    } catch (error) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: `Failed to write file content: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
+  }
+  
+  /**
+   * Handle CLEAR_SOURCE_CONTENT message
+   */
+  private async handleClearSourceContent(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    const { sourceId } = message.payload as { sourceId: string };
+    
+    if (!sourceId) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: 'Source ID is required'
+      });
+      return;
+    }
+    
+    const source = this.contextManager.getSource(sourceId);
+    
+    if (!source) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: 'Source not found'
+      });
+      return;
+    }
+    
+    if (source.type !== SourceType.FILE) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: 'Content clearing only supported for file sources'
+      });
+      return;
+    }
+    
+    try {
+      const fileSource = source as FileSource;
+      const filePath = path.resolve(this.config.workspaceRoot!, fileSource.filePath);
+      await fs.promises.writeFile(filePath, '', 'utf8');
+      
+      this.sendResponse(client, {
+        id: message.id,
+        success: true,
+        data: { sourceId }
+      });
+      
+      // Broadcast event
+      this.broadcastEvent({
+        type: EventType.CONTENT_CLEARED,
+        sourceId,
+        sourceType: source.type,
+        timestamp: new Date()
+      }, client.clientId);
+    } catch (error) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: `Failed to clear file content: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
+  }
+  
+  /**
+   * Handle SUBSCRIBE_EVENTS message
+   */
+  private async handleSubscribeEvents(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    client.subscribedToEvents = true;
+    
+    this.sendResponse(client, {
+      id: message.id,
+      success: true,
+      data: { subscribed: true }
+    });
   }
   
   /**
@@ -195,5 +668,12 @@ export class WebSocketServer {
       clearInterval(this.pingInterval);
       this.pingInterval = null;
     }
+  }
+  
+  /**
+   * Gets the context manager instance
+   */
+  getContextManager(): ContextManager {
+    return this.contextManager;
   }
 }

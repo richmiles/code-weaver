@@ -9,6 +9,8 @@
       "test": "jest"
     },
     "dependencies": {
+      "@codeweaver/context-manager": "workspace:*",
+      "@codeweaver/core": "workspace:*",
       "uuid": "^11.1.0",
       "ws": "^8.18.1"
     },
