@@ -5,26 +5,38 @@ import {
   DirectorySource,
   SnippetSource,
   GroupSource,
+  OpenFileSource,
+  GitDiffSource,
+  LinterErrorSource,
+  SubstructureSource,
   SourceType
 } from '@codeweaver/core';
 import { v4 as uuidv4 } from 'uuid';
 import { resolveGroupMembers } from './groupUtils';
 import { getSnippetsForFile } from './snippetUtils';
-import { validateSnippetSource } from './validators';
+import { validateSnippetSource, validateSubstructureSource } from './validators';
 
 // Define the type for creatable sources (specific types without generated fields)
 export type CreatableSource =
   | Omit<FileSource, 'id' | 'createdAt' | 'updatedAt'>
   | Omit<DirectorySource, 'id' | 'createdAt' | 'updatedAt'>
   | Omit<SnippetSource, 'id' | 'createdAt' | 'updatedAt'>
-  | Omit<GroupSource, 'id' | 'createdAt' | 'updatedAt'>;
+  | Omit<GroupSource, 'id' | 'createdAt' | 'updatedAt'>
+  | Omit<OpenFileSource, 'id' | 'createdAt' | 'updatedAt'>
+  | Omit<GitDiffSource, 'id' | 'createdAt' | 'updatedAt'>
+  | Omit<LinterErrorSource, 'id' | 'createdAt' | 'updatedAt'>
+  | Omit<SubstructureSource, 'id' | 'createdAt' | 'updatedAt'>;
 
 // Define the type for updatable source data
 export type UpdatableSourceData =
   | Partial<Omit<FileSource, 'id' | 'type' | 'createdAt' | 'updatedAt'>>
   | Partial<Omit<DirectorySource, 'id' | 'type' | 'createdAt' | 'updatedAt'>>
   | Partial<Omit<SnippetSource, 'id' | 'type' | 'createdAt' | 'updatedAt'>>
-  | Partial<Omit<GroupSource, 'id' | 'type' | 'createdAt' | 'updatedAt'>>;
+  | Partial<Omit<GroupSource, 'id' | 'type' | 'createdAt' | 'updatedAt'>>
+  | Partial<Omit<OpenFileSource, 'id' | 'type' | 'createdAt' | 'updatedAt'>>
+  | Partial<Omit<GitDiffSource, 'id' | 'type' | 'createdAt' | 'updatedAt'>>
+  | Partial<Omit<LinterErrorSource, 'id' | 'type' | 'createdAt' | 'updatedAt'>>
+  | Partial<Omit<SubstructureSource, 'id' | 'type' | 'createdAt' | 'updatedAt'>>;
 
 /**
  * ContextManager provides functionality to store, retrieve, and manage context sources.
@@ -46,6 +58,16 @@ export class ContextManager {
    */
   validateSnippetSource(snippetData: Omit<SnippetSource, 'id' | 'createdAt' | 'updatedAt'>): boolean {
     return validateSnippetSource(snippetData, this.getSource.bind(this));
+  }
+
+  /**
+   * Validates that a substructure has a valid parent file.
+   * 
+   * @param substructureData Data for a substructure source being added or updated
+   * @returns True if the substructure has a valid parent file, false otherwise
+   */
+  validateSubstructureSource(substructureData: Omit<SubstructureSource, 'id' | 'createdAt' | 'updatedAt'>): boolean {
+    return validateSubstructureSource(substructureData, this.getSource.bind(this));
   }
 
   /**
@@ -80,6 +102,11 @@ export class ContextManager {
     if (sourceData.type === SourceType.SNIPPET) {
       // Validate that the snippet has a valid parent file
       if (!this.validateSnippetSource(sourceData as Omit<SnippetSource, 'id' | 'createdAt' | 'updatedAt'>)) {
+        return undefined;
+      }
+    } else if (sourceData.type === SourceType.SUBSTRUCTURE) {
+      // Validate that the substructure has a valid parent file
+      if (!this.validateSubstructureSource(sourceData as Omit<SubstructureSource, 'id' | 'createdAt' | 'updatedAt'>)) {
         return undefined;
       }
     } else if (sourceData.type === SourceType.GROUP) {
@@ -136,6 +163,18 @@ export class ContextManager {
       } as Omit<SnippetSource, 'id' | 'createdAt' | 'updatedAt'>;
       
       if (!this.validateSnippetSource(updatedData)) {
+        return false;
+      }
+    }
+    
+    // If updating a substructure's parent file or location, validate the changes
+    if (source.type === SourceType.SUBSTRUCTURE && ('sourceFileId' in data || 'location' in data || 'structureMetadata' in data)) {
+      const updatedData = {
+        ...source,
+        ...data
+      } as Omit<SubstructureSource, 'id' | 'createdAt' | 'updatedAt'>;
+      
+      if (!this.validateSubstructureSource(updatedData)) {
         return false;
       }
     }

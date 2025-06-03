@@ -1,4 +1,5 @@
 import { SourceType } from './SourceType';
+import { SizeMetrics } from './SizeMetrics';
 
 export interface ContextSource {
     id: string;
@@ -7,4 +8,7 @@ export interface ContextSource {
     metadata?: Record<string, unknown>;
     createdAt: Date;
     updatedAt: Date;
+    size?: SizeMetrics; // Size information for the source
+    tags?: string[]; // User-defined tags for organization
+    description?: string; // User-provided description
   }
