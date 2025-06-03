@@ -9,6 +9,7 @@ export * from './types/EventType';
 export * from './types/ContextEvent';
 export * from './types/MessageType';
 export * from './types/Message';
+export * from './types/MessageResponse';
 export * from './types/ExportFormat';
 export * from './types/GitDiffSource';
 export * from './types/LinterErrorSource';

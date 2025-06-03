@@ -1,4 +1,6 @@
 // packages/websocket-client/src/index.ts
 export { 
-    WebSocketClient
+    WebSocketClient,
+    WebSocketClientOptions,
+    ConnectionOptions
   } from './websocketClient.js';
