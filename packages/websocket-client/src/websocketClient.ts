@@ -91,6 +91,8 @@ export class WebSocketClient {
       }
       
       // Set up connection handlers
+      let connectionResolved = false;
+      
       this.socket.onopen = () => {
         if (timeoutId) { clearTimeout(timeoutId); }
         this.reconnectAttempts = 0;
@@ -104,6 +106,7 @@ export class WebSocketClient {
           }
         }
         
+        connectionResolved = true;
         resolve();
       };
       
@@ -128,6 +131,11 @@ export class WebSocketClient {
           pending.reject(new Error('Connection closed'));
         });
         this.pendingRequests.clear();
+        
+        // If the connection was never established, reject the promise
+        if (!connectionResolved && !this.isClosing) {
+          reject(new Error('Connection closed before opening'));
+        }
         
         // Attempt reconnection if enabled
         if (!this.isClosing && this.options.autoReconnect && 
@@ -173,22 +181,37 @@ export class WebSocketClient {
    */
   disconnect(code?: number, reason?: string): void {
     this.isClosing = true;
+    
+    // Clear reconnect timer
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = undefined;
     }
     
-    if (this.socket) {
-      this.socket.close(code || 1000, reason || 'Client disconnect');
-      this.socket = null;
-    }
-    
-    // Clear pending requests
+    // Clear all pending request timers
     this.pendingRequests.forEach((pending) => {
       clearTimeout(pending.timeout);
       pending.reject(new Error('Client disconnected'));
     });
     this.pendingRequests.clear();
+    
+    // Clear message queue
+    this.messageQueue.length = 0;
+    
+    // Close socket if exists
+    if (this.socket) {
+      // Remove all event handlers to prevent memory leaks
+      this.socket.onopen = null;
+      this.socket.onerror = null;
+      this.socket.onclose = null;
+      this.socket.onmessage = null;
+      
+      if (this.socket.readyState === WebSocket.OPEN || 
+          this.socket.readyState === WebSocket.CONNECTING) {
+        this.socket.close(code || 1000, reason || 'Client disconnect');
+      }
+      this.socket = null;
+    }
   }
 
   /**

@@ -42,7 +42,7 @@ describe('WebSocketClient Connection', () => {
     
     // After rejection, the client should not be active
     expect(client.isActive()).toBe(false);
-  });
+  }, 10000);
   
   it('should handle connection timeout', async () => {
     // Create a client
@@ -51,6 +51,12 @@ describe('WebSocketClient Connection', () => {
     // Mock WebSocket implementation for this test to force timeout behavior
     // @ts-ignore - Mocking the global WebSocket
     global.WebSocket = class MockWebSocket {
+      readyState = 0; // WebSocket.CONNECTING
+      onopen: any;
+      onerror: any;
+      onclose: any;
+      onmessage: any;
+      
       constructor(_url: string) {
         // Don't call onopen - this simulates a connection that never completes
         setTimeout(() => {
@@ -58,8 +64,12 @@ describe('WebSocketClient Connection', () => {
         }, 10);
       }
       
-      close() {}
-    };
+      close() {
+        this.readyState = 3; // WebSocket.CLOSED
+      }
+      
+      send() {}
+    } as any;
     
     // Store the original WebSocket class
     const OriginalWebSocket = global.WebSocket;

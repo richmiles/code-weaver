@@ -6,7 +6,8 @@
     "scripts": {
         "build": "tsc --project tsconfig.json",
         "lint": "eslint --config eslint.config.js .",
-        "test": "jest"
+        "test": "jest",
+        "test:debug": "jest --detectOpenHandles"
     },
     "dependencies": {
         "uuid": "^11.1.0",
