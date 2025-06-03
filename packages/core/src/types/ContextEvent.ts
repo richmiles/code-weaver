@@ -1,5 +1,5 @@
-import { EventType } from './EventType';
-import { SourceType } from './SourceType';
+import { EventType } from './EventType.js';
+import { SourceType } from './SourceType.js';
 
 export interface ContextEvent {
   type: EventType;

@@ -12,9 +12,9 @@ import {
   SourceType
 } from '@codeweaver/core';
 import { v4 as uuidv4 } from 'uuid';
-import { resolveGroupMembers } from './groupUtils';
-import { getSnippetsForFile } from './snippetUtils';
-import { validateSnippetSource, validateSubstructureSource } from './validators';
+import { resolveGroupMembers } from './groupUtils.js';
+import { getSnippetsForFile } from './snippetUtils.js';
+import { validateSnippetSource, validateSubstructureSource } from './validators.js';
 
 // Define the type for creatable sources (specific types without generated fields)
 export type CreatableSource =

@@ -1,5 +1,5 @@
-import { SizeMetrics } from './SizeMetrics';
-import { SourceType } from './SourceType';
+import { SizeMetrics } from './SizeMetrics.js';
+import { SourceType } from './SourceType.js';
 
 export interface ContextSource {
     id: string;

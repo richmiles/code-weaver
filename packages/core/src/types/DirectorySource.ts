@@ -1,6 +1,6 @@
-import { ContextSource } from './ContextSource';
-import { GitStatus } from './FileSource';
-import { SourceType } from './SourceType';
+import { ContextSource } from './ContextSource.js';
+import { GitStatus } from './FileSource.js';
+import { SourceType } from './SourceType.js';
 
 export interface DirectoryEntry {
   name: string;

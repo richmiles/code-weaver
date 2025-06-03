@@ -1,2 +1,2 @@
 // src/index.ts
-export * from './contextManager';
+export * from './contextManager.js';

@@ -1,5 +1,5 @@
-import { ContextSource } from './ContextSource';
-import { SourceType } from './SourceType';
+import { ContextSource } from './ContextSource.js';
+import { SourceType } from './SourceType.js';
 
 export interface SnippetSource extends ContextSource {
   type: SourceType.SNIPPET;
