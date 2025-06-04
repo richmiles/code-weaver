@@ -96,6 +96,13 @@ section h2 {
   cursor: not-allowed;
 }
 
+.input-description {
+  margin-top: 12px;
+  color: #7f8c8d;
+  font-size: 0.875rem;
+  text-align: center;
+}
+
 /* Sources list */
 .sources-list {
   display: grid;
@@ -206,6 +213,127 @@ section h2 {
   padding: 32px 16px;
 }
 
+/* File Browser */
+.file-browser {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  overflow: hidden;
+}
+
+.browser-header {
+  background: #f8f9fa;
+  border-bottom: 1px solid #e1e8ed;
+  padding: 16px;
+}
+
+.browser-header h3 {
+  color: #2c3e50;
+  margin: 0 0 12px 0;
+  font-size: 1.125rem;
+}
+
+.path-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.back-btn {
+  padding: 6px 12px;
+  background: #3498db;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: background-color 0.2s ease;
+}
+
+.back-btn:hover:not(:disabled) {
+  background: #2980b9;
+}
+
+.back-btn:disabled {
+  background: #bdc3c7;
+  cursor: not-allowed;
+}
+
+.current-path {
+  font-family: 'Courier New', monospace;
+  background: #ecf0f1;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  color: #2c3e50;
+}
+
+.browser-content {
+  padding: 16px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.file-list {
+  display: grid;
+  gap: 4px;
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.file-item:hover {
+  background: #f8f9fa;
+}
+
+.file-item.directory {
+  color: #3498db;
+}
+
+.file-item.file {
+  color: #2c3e50;
+}
+
+.file-icon {
+  margin-right: 12px;
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.file-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.file-name {
+  font-weight: 500;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-details {
+  display: flex;
+  gap: 12px;
+  font-size: 0.75rem;
+  color: #7f8c8d;
+}
+
+.error {
+  color: #e74c3c;
+  padding: 12px;
+  background: #fdf2f2;
+  border-radius: 4px;
+  border: 1px solid #f5c6cb;
+}
+
 /* Responsive design */
 @media (max-width: 768px) {
   .app {
@@ -229,5 +357,20 @@ section h2 {
   
   .toggle-btn, .delete-btn {
     flex: 1;
+  }
+
+  .path-nav {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .current-path {
+    text-align: center;
+  }
+
+  .file-details {
+    flex-direction: column;
+    gap: 4px;
   }
 }

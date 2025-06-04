@@ -420,6 +420,51 @@ export class WebSocketClient {
   }
 
   /**
+   * Browses a directory and returns its contents
+   */
+  async browseDirectory(directoryPath?: string, includeHidden = false): Promise<{ path: string; items: Array<{ name: string; path: string; isDirectory: boolean; size?: number; lastModified?: Date }> }> {
+    const message: Message = {
+      type: MessageType.BROWSE_DIRECTORY,
+      id: this.generateMessageId(),
+      timestamp: new Date(),
+      payload: { directoryPath, includeHidden }
+    };
+    
+    const response = await this.sendAndWait(message);
+    return response.data as { path: string; items: Array<{ name: string; path: string; isDirectory: boolean; size?: number; lastModified?: Date }> };
+  }
+
+  /**
+   * Gets the workspace tree structure
+   */
+  async getWorkspaceTree(maxDepth = 3, includeHidden = false): Promise<{ name: string; path: string; isDirectory: boolean; size?: number; lastModified?: Date; children?: any[] }> {
+    const message: Message = {
+      type: MessageType.GET_WORKSPACE_TREE,
+      id: this.generateMessageId(),
+      timestamp: new Date(),
+      payload: { maxDepth, includeHidden }
+    };
+    
+    const response = await this.sendAndWait(message);
+    return response.data as { name: string; path: string; isDirectory: boolean; size?: number; lastModified?: Date; children?: any[] };
+  }
+
+  /**
+   * Searches for files matching the query
+   */
+  async searchFiles(query: string, maxResults = 50, includeDirectories = true, includeHidden = false): Promise<{ query: string; results: Array<{ path: string; name: string; isDirectory: boolean; score: number }> }> {
+    const message: Message = {
+      type: MessageType.SEARCH_FILES,
+      id: this.generateMessageId(),
+      timestamp: new Date(),
+      payload: { query, maxResults, includeDirectories, includeHidden }
+    };
+    
+    const response = await this.sendAndWait(message);
+    return response.data as { query: string; results: Array<{ path: string; name: string; isDirectory: boolean; score: number }> };
+  }
+
+  /**
    * Schedules a reconnection attempt
    * @private
    */

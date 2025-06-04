@@ -44,6 +44,31 @@ interface MessageResponse {
   error?: string;
 }
 
+// File system interfaces
+interface FileTreeNode {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+  size?: number;
+  lastModified?: Date;
+  children?: FileTreeNode[];
+}
+
+interface DirectoryItem {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+  size?: number;
+  lastModified?: Date;
+}
+
+interface SearchResult {
+  path: string;
+  name: string;
+  isDirectory: boolean;
+  score: number;
+}
+
 export class WebSocketServer {
   private server: WSServer | null = null;
   private clients: Map<string, CodeWeaverWebSocket> = new Map();
@@ -241,6 +266,18 @@ export class WebSocketServer {
           
         case MessageType.SUBSCRIBE_EVENTS:
           await this.handleSubscribeEvents(client, message);
+          break;
+          
+        case MessageType.BROWSE_DIRECTORY:
+          await this.handleBrowseDirectory(client, message);
+          break;
+          
+        case MessageType.GET_WORKSPACE_TREE:
+          await this.handleGetWorkspaceTree(client, message);
+          break;
+          
+        case MessageType.SEARCH_FILES:
+          await this.handleSearchFiles(client, message);
           break;
           
         default:
@@ -627,7 +664,305 @@ export class WebSocketServer {
       data: { subscribed: true }
     });
   }
+
+  /**
+   * Handle BROWSE_DIRECTORY message
+   */
+  private async handleBrowseDirectory(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    const { directoryPath, includeHidden = false } = message.payload as { directoryPath?: string; includeHidden?: boolean };
+    
+    const targetPath = directoryPath ? path.resolve(this.config.workspaceRoot!, directoryPath) : this.config.workspaceRoot!;
+    
+    try {
+      const stats = await fs.promises.stat(targetPath);
+      
+      if (!stats.isDirectory()) {
+        this.sendResponse(client, {
+          id: message.id,
+          success: false,
+          error: 'Path is not a directory'
+        });
+        return;
+      }
+      
+      const items = await fs.promises.readdir(targetPath, { withFileTypes: true });
+      const directoryItems: DirectoryItem[] = [];
+      
+      for (const item of items) {
+        if (!includeHidden && item.name.startsWith('.')) {
+          continue;
+        }
+        
+        const itemPath = path.join(targetPath, item.name);
+        const relativePath = path.relative(this.config.workspaceRoot!, itemPath);
+        
+        try {
+          const itemStats = await fs.promises.stat(itemPath);
+          
+          directoryItems.push({
+            name: item.name,
+            path: relativePath,
+            isDirectory: item.isDirectory(),
+            size: item.isFile() ? itemStats.size : undefined,
+            lastModified: itemStats.mtime
+          });
+        } catch {
+          // Skip items we can't stat (permissions, broken symlinks, etc.)
+          continue;
+        }
+      }
+      
+      // Sort directories first, then files, both alphabetically
+      directoryItems.sort((a, b) => {
+        if (a.isDirectory && !b.isDirectory) return -1;
+        if (!a.isDirectory && b.isDirectory) return 1;
+        return a.name.localeCompare(b.name);
+      });
+      
+      this.sendResponse(client, {
+        id: message.id,
+        success: true,
+        data: { path: path.relative(this.config.workspaceRoot!, targetPath), items: directoryItems }
+      });
+    } catch (error) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: `Failed to browse directory: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
+  }
+
+  /**
+   * Handle GET_WORKSPACE_TREE message
+   */
+  private async handleGetWorkspaceTree(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    const { maxDepth = 3, includeHidden = false } = message.payload as { maxDepth?: number; includeHidden?: boolean };
+    
+    try {
+      const tree = await this.buildFileTree(this.config.workspaceRoot!, maxDepth, includeHidden);
+      
+      this.sendResponse(client, {
+        id: message.id,
+        success: true,
+        data: tree
+      });
+    } catch (error) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: `Failed to get workspace tree: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
+  }
+
+  /**
+   * Handle SEARCH_FILES message
+   */
+  private async handleSearchFiles(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    const { query, maxResults = 50, includeDirectories = true, includeHidden = false } = message.payload as { 
+      query: string; 
+      maxResults?: number; 
+      includeDirectories?: boolean; 
+      includeHidden?: boolean; 
+    };
+    
+    if (!query || query.trim().length < 1) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: 'Search query is required'
+      });
+      return;
+    }
+    
+    try {
+      const searchResults = await this.searchFiles(this.config.workspaceRoot!, query.trim(), {
+        maxResults,
+        includeDirectories,
+        includeHidden
+      });
+      
+      this.sendResponse(client, {
+        id: message.id,
+        success: true,
+        data: { query, results: searchResults }
+      });
+    } catch (error) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: `Failed to search files: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
+  }
   
+  /**
+   * Builds a file tree for the given directory
+   */
+  private async buildFileTree(
+    rootPath: string, 
+    maxDepth: number, 
+    includeHidden: boolean,
+    currentDepth: number = 0
+  ): Promise<FileTreeNode> {
+    const stats = await fs.promises.stat(rootPath);
+    const name = path.basename(rootPath);
+    const relativePath = path.relative(this.config.workspaceRoot!, rootPath);
+    
+    const node: FileTreeNode = {
+      name: name || 'workspace',
+      path: relativePath || '.',
+      isDirectory: stats.isDirectory(),
+      size: stats.isFile() ? stats.size : undefined,
+      lastModified: stats.mtime
+    };
+    
+    if (stats.isDirectory() && currentDepth < maxDepth) {
+      try {
+        const items = await fs.promises.readdir(rootPath, { withFileTypes: true });
+        const children: FileTreeNode[] = [];
+        
+        for (const item of items) {
+          if (!includeHidden && item.name.startsWith('.')) {
+            continue;
+          }
+          
+          const itemPath = path.join(rootPath, item.name);
+          
+          try {
+            const childNode = await this.buildFileTree(itemPath, maxDepth, includeHidden, currentDepth + 1);
+            children.push(childNode);
+          } catch {
+            // Skip items we can't access
+            continue;
+          }
+        }
+        
+        // Sort directories first, then files, both alphabetically
+        children.sort((a, b) => {
+          if (a.isDirectory && !b.isDirectory) return -1;
+          if (!a.isDirectory && b.isDirectory) return 1;
+          return a.name.localeCompare(b.name);
+        });
+        
+        node.children = children;
+      } catch {
+        // If we can't read the directory, just mark it as a directory without children
+      }
+    }
+    
+    return node;
+  }
+
+  /**
+   * Searches for files matching the query using fuzzy matching
+   */
+  private async searchFiles(
+    rootPath: string, 
+    query: string, 
+    options: {
+      maxResults: number;
+      includeDirectories: boolean;
+      includeHidden: boolean;
+    }
+  ): Promise<SearchResult[]> {
+    const results: SearchResult[] = [];
+    const queryLower = query.toLowerCase();
+    
+    const searchDirectory = async (dirPath: string): Promise<void> => {
+      if (results.length >= options.maxResults) {
+        return;
+      }
+      
+      try {
+        const items = await fs.promises.readdir(dirPath, { withFileTypes: true });
+        
+        for (const item of items) {
+          if (results.length >= options.maxResults) {
+            break;
+          }
+          
+          if (!options.includeHidden && item.name.startsWith('.')) {
+            continue;
+          }
+          
+          const itemPath = path.join(dirPath, item.name);
+          const relativePath = path.relative(this.config.workspaceRoot!, itemPath);
+          
+          // Calculate fuzzy match score
+          const score = this.calculateFuzzyScore(item.name.toLowerCase(), queryLower);
+          
+          if (score > 0) {
+            if (item.isFile() || (item.isDirectory() && options.includeDirectories)) {
+              results.push({
+                path: relativePath,
+                name: item.name,
+                isDirectory: item.isDirectory(),
+                score
+              });
+            }
+          }
+          
+          // Recursively search subdirectories
+          if (item.isDirectory()) {
+            await searchDirectory(itemPath);
+          }
+        }
+      } catch {
+        // Skip directories we can't read
+      }
+    };
+    
+    await searchDirectory(rootPath);
+    
+    // Sort by score (highest first), then by name
+    results.sort((a, b) => {
+      if (b.score !== a.score) {
+        return b.score - a.score;
+      }
+      return a.name.localeCompare(b.name);
+    });
+    
+    return results.slice(0, options.maxResults);
+  }
+
+  /**
+   * Calculates a fuzzy matching score between a filename and query
+   */
+  private calculateFuzzyScore(filename: string, query: string): number {
+    if (filename.includes(query)) {
+      // Exact substring match gets high score
+      const startIndex = filename.indexOf(query);
+      // Prefer matches at the beginning of the filename
+      return startIndex === 0 ? 100 : 80 - startIndex;
+    }
+    
+    // Check for fuzzy matching (all characters in order)
+    let queryIndex = 0;
+    let filenameIndex = 0;
+    let matchScore = 0;
+    let consecutiveMatches = 0;
+    
+    while (queryIndex < query.length && filenameIndex < filename.length) {
+      if (query[queryIndex] === filename[filenameIndex]) {
+        queryIndex++;
+        consecutiveMatches++;
+        matchScore += consecutiveMatches; // Bonus for consecutive matches
+      } else {
+        consecutiveMatches = 0;
+      }
+      filenameIndex++;
+    }
+    
+    // Only return a score if all query characters were found
+    if (queryIndex === query.length) {
+      return Math.max(1, matchScore);
+    }
+    
+    return 0;
+  }
+
   /**
    * Handles server errors
    */

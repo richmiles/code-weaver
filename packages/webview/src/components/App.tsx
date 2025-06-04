@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { WebSocketClient } from '@codeweaver/websocket-client';
 import { ContextSource, FileSource, SourceType } from '@codeweaver/core';
+import FileBrowser from './FileBrowser';
 import '../styles/index.css';
 
 const App = () => {
@@ -11,7 +12,7 @@ const App = () => {
 
   // Initialize WebSocket connection
   useEffect(() => {
-    const wsClient = new WebSocketClient('ws://localhost:8080', {
+    const wsClient = new WebSocketClient('ws://localhost:8180', {
       events: {
         onConnect: () => {
           console.log('Connected to WebSocket server');
@@ -111,6 +112,29 @@ const App = () => {
     }
   };
 
+  const handleFileBrowserSelect = async (filePath: string) => {
+    if (!client) return;
+
+    try {
+      const fileSource: Omit<FileSource, 'id' | 'createdAt' | 'updatedAt'> = {
+        type: SourceType.FILE,
+        label: filePath.split('/').pop() || filePath,
+        filePath: filePath,
+        description: `File: ${filePath}`,
+        fileMetadata: {
+          // These will be populated by the server when reading the file
+          size: 0,
+          lastModified: new Date()
+        }
+      };
+
+      await client.addSource(fileSource);
+      await loadSources(); // Refresh the sources list
+    } catch (error) {
+      console.error('Failed to add file from browser:', error);
+    }
+  };
+
   return (
     <div className="app">
       <header className="header">
@@ -131,6 +155,15 @@ const App = () => {
             onChange={handleFileSelect}
             disabled={!connected}
             className="file-input"
+          />
+          <p className="input-description">Or browse workspace files below:</p>
+        </section>
+
+        <section>
+          <FileBrowser 
+            client={client}
+            connected={connected}
+            onFileSelect={handleFileBrowserSelect}
           />
         </section>
 

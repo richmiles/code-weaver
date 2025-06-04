@@ -9,5 +9,8 @@ export enum MessageType {
     CLEAR_SOURCE_CONTENT = 'clear_source_content',
     GET_SOURCE_CONTENT = 'get_source_content',
     SUBSCRIBE_EVENTS = 'subscribe_events',
-    EVENT = 'event'
+    EVENT = 'event',
+    BROWSE_DIRECTORY = 'browse_directory',
+    GET_WORKSPACE_TREE = 'get_workspace_tree',
+    SEARCH_FILES = 'search_files'
   }
