@@ -342,7 +342,7 @@ export class WebSocketClient {
       type: MessageType.DELETE_SOURCE,
       id: this.generateMessageId(),
       timestamp: new Date(),
-      payload: { id }
+      payload: { sourceId: id }
     };
     
     await this.sendAndWait(message);
@@ -370,7 +370,7 @@ export class WebSocketClient {
       type: MessageType.SET_ACTIVE_CONTEXT,
       id: this.generateMessageId(),
       timestamp: new Date(),
-      payload: sourceIds
+      payload: { sourceIds }
     };
     
     await this.sendAndWait(message);
@@ -388,7 +388,7 @@ export class WebSocketClient {
     };
     
     const response = await this.sendAndWait(message);
-    return response.data as string;
+    return (response.data as { content: string }).content;
   }
 
   /**

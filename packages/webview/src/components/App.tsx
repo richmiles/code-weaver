@@ -9,6 +9,9 @@ const App = () => {
   const [connected, setConnected] = useState(false);
   const [sources, setSources] = useState<ContextSource[]>([]);
   const [activeSources, setActiveSources] = useState<ContextSource[]>([]);
+  const [previewSource, setPreviewSource] = useState<ContextSource | null>(null);
+  const [previewContent, setPreviewContent] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   // Initialize WebSocket connection
   useEffect(() => {
@@ -135,6 +138,68 @@ const App = () => {
     }
   };
 
+  const previewSourceContent = async (source: ContextSource) => {
+    if (!client || previewSource?.id === source.id) {
+      setPreviewSource(null);
+      setPreviewContent(null);
+      return;
+    }
+
+    setPreviewLoading(true);
+    setPreviewSource(source);
+    setPreviewContent(null);
+
+    try {
+      const content = await client.getSourceContent(source.id);
+      setPreviewContent(content);
+    } catch (error) {
+      console.error('Failed to get source content:', error);
+      setPreviewContent('Error loading content: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const exportActiveContext = async () => {
+    if (!client || activeSources.length === 0) return;
+
+    try {
+      const contextData = [];
+      
+      for (const source of activeSources) {
+        try {
+          const content = await client.getSourceContent(source.id);
+          contextData.push({
+            source,
+            content
+          });
+        } catch (error) {
+          console.error(`Failed to get content for ${source.label}:`, error);
+          contextData.push({
+            source,
+            content: `Error loading content: ${error instanceof Error ? error.message : 'Unknown error'}`
+          });
+        }
+      }
+
+      // Format as markdown-style text
+      const formattedContent = contextData.map(({ source, content }) => {
+        const fileHeader = source.type === SourceType.FILE 
+          ? `## File: ${(source as FileSource).filePath}\n`
+          : `## ${source.type}: ${source.label}\n`;
+        
+        return `${fileHeader}\n\`\`\`\n${content}\n\`\`\`\n`;
+      }).join('\n');
+
+      // Copy to clipboard
+      await navigator.clipboard.writeText(formattedContent);
+      alert('Context copied to clipboard!');
+    } catch (error) {
+      console.error('Failed to export context:', error);
+      alert('Failed to export context: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
+  };
+
   return (
     <div className="app">
       <header className="header">
@@ -187,6 +252,12 @@ const App = () => {
                       {isActive ? 'Remove from Context' : 'Add to Context'}
                     </button>
                     <button
+                      onClick={() => previewSourceContent(source)}
+                      className={`preview-btn ${previewSource?.id === source.id ? 'active' : ''}`}
+                    >
+                      {previewSource?.id === source.id ? 'Hide Preview' : 'Preview'}
+                    </button>
+                    <button
                       onClick={() => deleteSource(source.id)}
                       className="delete-btn"
                     >
@@ -214,7 +285,27 @@ const App = () => {
               <p className="empty-state">No sources in active context.</p>
             )}
           </div>
+          {activeSources.length > 0 && (
+            <div className="context-actions">
+              <button onClick={exportActiveContext} className="export-btn">
+                Copy Context to Clipboard
+              </button>
+            </div>
+          )}
         </section>
+
+        {previewSource && (
+          <section className="preview-section">
+            <h2>Preview: {previewSource.label}</h2>
+            <div className="preview-content">
+              {previewLoading ? (
+                <p>Loading...</p>
+              ) : (
+                <pre className="code-preview">{previewContent}</pre>
+              )}
+            </div>
+          </section>
+        )}
       </main>
     </div>
   );

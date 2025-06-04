@@ -16,6 +16,7 @@
     ],
     "dependencies": {
       "@codeweaver/core": "^0.1.0",
+      "@codeweaver/websocket-client": "^0.1.0",
       "@modelcontextprotocol/sdk": "^1.0.0",
       "zod": "^3.22.4"
     },

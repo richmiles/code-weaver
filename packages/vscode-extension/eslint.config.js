@@ -7,6 +7,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export default [
   // Inherit the shared ESLint base configuration
   ...baseConfig,
+  // Ignore coverage and build artifacts
+  {
+    ignores: ['coverage/**', 'dist/**', 'node_modules/**']
+  },
   // Package-specific settings for source files
   {
     files: ['src/**/*.{ts,tsx}'],

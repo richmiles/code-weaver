@@ -1,226 +1,330 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { WebSocketClient } from "@codeweaver/websocket-client";
+import { ContextSource, FileSource, SourceType } from "@codeweaver/core";
 
-const NWS_API_BASE = "https://api.weather.gov";
-const USER_AGENT = "weather-app/1.0";
+// Configuration
+const WS_SERVER_URL = process.env.CODEWEAVER_WS_URL || "ws://localhost:8180";
 
-// Helper function for making NWS API requests
-async function makeNWSRequest<T>(url: string): Promise<T | null> {
-  const headers = {
-    "User-Agent": USER_AGENT,
-    Accept: "application/geo+json",
-  };
+// Global WebSocket client
+let wsClient: WebSocketClient | null = null;
 
-  try {
-    const response = await fetch(url, { headers });
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    return (await response.json()) as T;
-  } catch (error) {
-    console.error("Error making NWS request:", error);
-    return null;
+// Helper function to ensure WebSocket connection
+async function ensureConnection(): Promise<WebSocketClient> {
+  if (!wsClient) {
+    wsClient = new WebSocketClient(WS_SERVER_URL, {
+      autoReconnect: true,
+      events: {
+        onConnect: () => console.error("Connected to CodeWeaver WebSocket server"),
+        onDisconnect: () => console.error("Disconnected from CodeWeaver WebSocket server"),
+        onError: (error) => console.error("WebSocket error:", error)
+      }
+    });
+    
+    await wsClient.connect();
   }
-}
-
-interface AlertFeature {
-  properties: {
-    event?: string;
-    areaDesc?: string;
-    severity?: string;
-    status?: string;
-    headline?: string;
-  };
-}
-
-// Format alert data
-function formatAlert(feature: AlertFeature): string {
-  const props = feature.properties;
-  return [
-    `Event: ${props.event || "Unknown"}`,
-    `Area: ${props.areaDesc || "Unknown"}`,
-    `Severity: ${props.severity || "Unknown"}`,
-    `Status: ${props.status || "Unknown"}`,
-    `Headline: ${props.headline || "No headline"}`,
-    "---",
-  ].join("\n");
-}
-
-interface ForecastPeriod {
-  name?: string;
-  temperature?: number;
-  temperatureUnit?: string;
-  windSpeed?: string;
-  windDirection?: string;
-  shortForecast?: string;
-}
-
-interface AlertsResponse {
-  features: AlertFeature[];
-}
-
-interface PointsResponse {
-  properties: {
-    forecast?: string;
-  };
-}
-
-interface ForecastResponse {
-  properties: {
-    periods: ForecastPeriod[];
-  };
+  
+  if (!wsClient.isActive()) {
+    await wsClient.connect();
+  }
+  
+  return wsClient;
 }
 
 // Create server instance
 const server = new McpServer({
-  name: "weather",
+  name: "codeweaver",
   version: "1.0.0",
 });
 
-// Register weather tools
+// List all context sources
 server.tool(
-  "get-alerts",
-  "Get weather alerts for a state",
-  {
-    state: z.string().length(2).describe("Two-letter state code (e.g. CA, NY)"),
-  },
-  async ({ state }) => {
-    const stateCode = state.toUpperCase();
-    const alertsUrl = `${NWS_API_BASE}/alerts?area=${stateCode}`;
-    const alertsData = await makeNWSRequest<AlertsResponse>(alertsUrl);
+  "list-sources",
+  "List all available context sources",
+  {},
+  async () => {
+    try {
+      const client = await ensureConnection();
+      const sources = await client.getSources();
+      
+      const sourcesList = sources.map(source => {
+        const metadata = {
+          id: source.id,
+          type: source.type,
+          label: source.label,
+          description: source.description,
+          created: source.createdAt.toISOString()
+        };
+        
+        if (source.type === SourceType.FILE) {
+          const fileSource = source as FileSource;
+          return {
+            ...metadata,
+            filePath: fileSource.filePath,
+            size: fileSource.fileMetadata?.size
+          };
+        }
+        
+        return metadata;
+      });
 
-    if (!alertsData) {
       return {
         content: [
           {
             type: "text",
-            text: "Failed to retrieve alerts data",
-          },
-        ],
+            text: `Available context sources (${sources.length}):\n\n${JSON.stringify(sourcesList, null, 2)}`
+          }
+        ]
       };
-    }
-
-    const features = alertsData.features || [];
-    if (features.length === 0) {
+    } catch (error) {
       return {
         content: [
           {
             type: "text",
-            text: `No active alerts for ${stateCode}`,
-          },
-        ],
+            text: `Error listing sources: ${error instanceof Error ? error.message : 'Unknown error'}`
+          }
+        ]
       };
     }
-
-    const formattedAlerts = features.map(formatAlert);
-    const alertsText = `Active alerts for ${stateCode}:\n\n${formattedAlerts.join("\n")}`;
-
-    return {
-      content: [
-        {
-          type: "text",
-          text: alertsText,
-        },
-      ],
-    };
-  },
+  }
 );
 
+// Get active context
 server.tool(
-  "get-forecast",
-  "Get weather forecast for a location",
+  "get-active-context",
+  "Get the current active context with content",
+  {},
+  async () => {
+    try {
+      const client = await ensureConnection();
+      const activeSourceIds = await client.getActiveContext();
+      const allSources = await client.getSources();
+      
+      const activeSources = allSources.filter(source => activeSourceIds.includes(source.id));
+      
+      if (activeSources.length === 0) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "No active context sources"
+            }
+          ]
+        };
+      }
+
+      const contextData = [];
+      
+      for (const source of activeSources) {
+        try {
+          const content = await client.getSourceContent(source.id);
+          const header = source.type === SourceType.FILE 
+            ? `## File: ${(source as FileSource).filePath}`
+            : `## ${source.type}: ${source.label}`;
+          
+          contextData.push(`${header}\n\n\`\`\`\n${content}\n\`\`\``);
+        } catch (error) {
+          contextData.push(`## ${source.label}\nError loading content: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Active Context (${activeSources.length} sources):\n\n${contextData.join('\n\n')}`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error getting active context: ${error instanceof Error ? error.message : 'Unknown error'}`
+          }
+        ]
+      };
+    }
+  }
+);
+
+// Add file to context
+server.tool(
+  "add-file-source",
+  "Add a file to the context sources",
   {
-    latitude: z.number().min(-90).max(90).describe("Latitude of the location"),
-    longitude: z
-      .number()
-      .min(-180)
-      .max(180)
-      .describe("Longitude of the location"),
+    filePath: z.string().describe("Path to the file to add"),
+    label: z.string().optional().describe("Optional label for the file source")
   },
-  async ({ latitude, longitude }) => {
-    // Get grid point data
-    const pointsUrl = `${NWS_API_BASE}/points/${latitude.toFixed(4)},${longitude.toFixed(4)}`;
-    const pointsData = await makeNWSRequest<PointsResponse>(pointsUrl);
+  async ({ filePath, label }) => {
+    try {
+      const client = await ensureConnection();
+      
+      const fileSource = {
+        type: SourceType.FILE,
+        label: label || filePath.split('/').pop() || filePath,
+        filePath: filePath,
+        description: `File: ${filePath}`,
+        fileMetadata: {
+          size: 0, // Will be populated by server
+          lastModified: new Date()
+        }
+      };
 
-    if (!pointsData) {
+      const addedSource = await client.addSource(fileSource);
+      
       return {
         content: [
           {
             type: "text",
-            text: `Failed to retrieve grid point data for coordinates: ${latitude}, ${longitude}. This location may not be supported by the NWS API (only US locations are supported).`,
-          },
-        ],
+            text: `Successfully added file source: ${addedSource.label} (ID: ${addedSource.id})`
+          }
+        ]
       };
-    }
-
-    const forecastUrl = pointsData.properties?.forecast;
-    if (!forecastUrl) {
+    } catch (error) {
       return {
         content: [
           {
             type: "text",
-            text: "Failed to get forecast URL from grid point data",
-          },
-        ],
+            text: `Error adding file source: ${error instanceof Error ? error.message : 'Unknown error'}`
+          }
+        ]
       };
     }
+  }
+);
 
-    // Get forecast data
-    const forecastData = await makeNWSRequest<ForecastResponse>(forecastUrl);
-    if (!forecastData) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: "Failed to retrieve forecast data",
-          },
-        ],
-      };
-    }
-
-    const periods = forecastData.properties?.periods || [];
-    if (periods.length === 0) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: "No forecast periods available",
-          },
-        ],
-      };
-    }
-
-    // Format forecast periods
-    const formattedForecast = periods.map((period: ForecastPeriod) =>
-      [
-        `${period.name || "Unknown"}:`,
-        `Temperature: ${period.temperature || "Unknown"}°${period.temperatureUnit || "F"}`,
-        `Wind: ${period.windSpeed || "Unknown"} ${period.windDirection || ""}`,
-        `${period.shortForecast || "No forecast available"}`,
-        "---",
-      ].join("\n"),
-    );
-
-    const forecastText = `Forecast for ${latitude}, ${longitude}:\n\n${formattedForecast.join("\n")}`;
-
-    return {
-      content: [
-        {
-          type: "text",
-          text: forecastText,
-        },
-      ],
-    };
+// Set active context
+server.tool(
+  "set-active-context",
+  "Set which sources are active in the context",
+  {
+    sourceIds: z.array(z.string()).describe("Array of source IDs to activate")
   },
+  async ({ sourceIds }) => {
+    try {
+      const client = await ensureConnection();
+      await client.setActiveContext(sourceIds);
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Successfully activated ${sourceIds.length} sources`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting active context: ${error instanceof Error ? error.message : 'Unknown error'}`
+          }
+        ]
+      };
+    }
+  }
+);
+
+// Browse directory
+server.tool(
+  "browse-directory",
+  "Browse files and directories in the workspace",
+  {
+    path: z.string().optional().describe("Directory path to browse (relative to workspace root)")
+  },
+  async ({ path }) => {
+    try {
+      const client = await ensureConnection();
+      const result = await client.browseDirectory(path);
+      
+      const items = result.items.map(item => ({
+        name: item.name,
+        path: item.path,
+        type: item.isDirectory ? 'directory' : 'file',
+        size: item.size,
+        lastModified: item.lastModified?.toISOString()
+      }));
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Directory: /${result.path}\n\n${JSON.stringify(items, null, 2)}`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error browsing directory: ${error instanceof Error ? error.message : 'Unknown error'}`
+          }
+        ]
+      };
+    }
+  }
+);
+
+// Get file content
+server.tool(
+  "get-file-content",
+  "Get the content of a specific source",
+  {
+    sourceId: z.string().describe("ID of the source to get content for")
+  },
+  async ({ sourceId }) => {
+    try {
+      const client = await ensureConnection();
+      const content = await client.getSourceContent(sourceId);
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: content
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error getting file content: ${error instanceof Error ? error.message : 'Unknown error'}`
+          }
+        ]
+      };
+    }
+  }
 );
 
 // Start the server
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("Weather MCP Server running on stdio");
+  console.error("CodeWeaver MCP Server running on stdio");
+  console.error(`Connecting to WebSocket server at: ${WS_SERVER_URL}`);
 }
+
+// Cleanup on exit
+process.on('SIGINT', () => {
+  if (wsClient) {
+    wsClient.disconnect();
+  }
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  if (wsClient) {
+    wsClient.disconnect();
+  }
+  process.exit(0);
+});
 
 main().catch((error) => {
   console.error("Fatal error in main():", error);
