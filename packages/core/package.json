@@ -1,23 +1,55 @@
 {
-  "name": "@codeweaver/core",
+  "name": "@codeweaver/core", 
   "version": "0.1.0",
-  "description": "Shared types and utilities for Code Weaver",
+  "description": "Code Weaver - AI-powered code analysis with @mention syntax for developers. Query your codebase with Claude/GPT using @file:, @function:, @directory: mentions.",
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
+  "bin": {
+    "code-weaver": "dist/cli/cli.js",
+    "codeweaver": "dist/cli/cli.js"
+  },
   "scripts": {
     "build": "tsc",
     "watch": "tsc --watch",
     "clean": "rimraf dist",
     "test": "jest",
-    "lint": "eslint --config eslint.config.js ."
+    "lint": "eslint --config eslint.config.js .",
+    "cli": "node --loader ts-node/esm src/cli/cli.ts",
+    "demo": "node --loader ts-node/esm examples/demo.ts"
   },
   "files": [
     "dist"
   ],
-  "dependencies": {},
+  "keywords": [
+    "ai",
+    "code-analysis", 
+    "cli",
+    "claude",
+    "openai",
+    "gpt",
+    "mention",
+    "codebase",
+    "developer-tools",
+    "typescript",
+    "javascript",
+    "llm"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/code-weaver.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/your-username/code-weaver#readme",
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "glob": "^11.0.0"
+  },
   "devDependencies": {
-    "rimraf": "^6.0.1"
+    "rimraf": "^6.0.1",
+    "ts-node": "^10.9.2",
+    "@types/node": "^22.0.0"
   }
 }

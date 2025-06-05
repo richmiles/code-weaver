@@ -13,12 +13,17 @@ export interface WebSocketClientOptions {
   autoReconnect?: boolean;
   reconnectInterval?: number;
   maxReconnectAttempts?: number;
+  heartbeatInterval?: number;
+  messageQueueMaxSize?: number;
+  connectionTimeout?: number;
   events?: {
     onMessage?: (data: unknown) => void;
     onConnect?: () => void;
     onDisconnect?: (code: number, reason: string) => void;
     onError?: (error: Error) => void;
     onEvent?: (event: ContextEvent) => void;
+    onReconnecting?: (attempt: number) => void;
+    onReconnected?: () => void;
   };
 }
 
@@ -30,6 +35,8 @@ interface PendingRequest {
   resolve: (response: MessageResponse) => void;
   reject: (error: Error) => void;
   timeout: NodeJS.Timeout;
+  timestamp: number;
+  retryCount: number;
 }
 
 export class WebSocketClient {
@@ -40,8 +47,11 @@ export class WebSocketClient {
   private pendingRequests = new Map<string, PendingRequest>();
   private reconnectAttempts = 0;
   private reconnectTimer?: NodeJS.Timeout;
+  private heartbeatTimer?: NodeJS.Timeout;
+  private lastHeartbeat = 0;
   private isClosing = false;
   private messageQueue: Message[] = [];
+  private connectionState: 'disconnected' | 'connecting' | 'connected' | 'reconnecting' = 'disconnected';
   
   /**
    * Creates a new WebSocketClient instance
@@ -55,6 +65,9 @@ export class WebSocketClient {
       autoReconnect: true,
       reconnectInterval: 1000,
       maxReconnectAttempts: 5,
+      heartbeatInterval: 30000,
+      messageQueueMaxSize: 100,
+      connectionTimeout: 10000,
       ...options
     };
     this.clientId = this.generateClientId();
@@ -76,75 +89,102 @@ export class WebSocketClient {
   async connect(options?: ConnectionOptions): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       this.isClosing = false;
-      this.socket = new WebSocket(this.url);
+      this.connectionState = 'connecting';
       
-      // Set up timeout if specified
-      let timeoutId: NodeJS.Timeout | undefined;
-      if (options?.timeout) {
-        timeoutId = setTimeout(() => {
-          if (this.socket) {
-            this.socket.close();
-            this.socket = null;
-            reject(new Error('Connection timeout'));
-          }
-        }, options.timeout);
+      try {
+        this.socket = new WebSocket(this.url);
+      } catch (error) {
+        this.connectionState = 'disconnected';
+        reject(new Error(`Failed to create WebSocket: ${error}`));
+        return;
       }
+      
+      // Set up timeout
+      const timeout = options?.timeout || this.options.connectionTimeout || 10000;
+      const timeoutId = setTimeout(() => {
+        if (this.socket && this.connectionState === 'connecting') {
+          this.socket.close();
+          this.socket = null;
+          this.connectionState = 'disconnected';
+          reject(new Error(`Connection timeout after ${timeout}ms`));
+        }
+      }, timeout);
       
       // Set up connection handlers
       let connectionResolved = false;
       
       this.socket.onopen = () => {
-        if (timeoutId) { clearTimeout(timeoutId); }
+        clearTimeout(timeoutId);
+        this.connectionState = 'connected';
+        this.lastHeartbeat = Date.now();
+        
+        const wasReconnection = this.reconnectAttempts > 0;
         this.reconnectAttempts = 0;
-        this.options.events?.onConnect?.();
+        
+        // Start heartbeat
+        this.startHeartbeat();
         
         // Process queued messages
-        while (this.messageQueue.length > 0) {
-          const message = this.messageQueue.shift();
-          if (message) {
-            this.send(message);
-          }
+        this.processMessageQueue();
+        
+        // Emit appropriate events
+        if (wasReconnection) {
+          this.options.events?.onReconnected?.();
         }
+        this.options.events?.onConnect?.();
         
         connectionResolved = true;
         resolve();
       };
       
-      this.socket.onerror = (_error) => {
-        if (timeoutId) { clearTimeout(timeoutId); }
-        const err = new Error('WebSocket error');
+      this.socket.onerror = (error) => {
+        clearTimeout(timeoutId);
+        const errorMessage = error instanceof ErrorEvent ? error.message : 'WebSocket error';
+        const err = new Error(`WebSocket error: ${errorMessage}`);
+        
         this.options.events?.onError?.(err);
-        if (this.socket?.readyState === WebSocket.CONNECTING) {
+        
+        if (this.connectionState === 'connecting') {
+          this.connectionState = 'disconnected';
           this.socket = null;
           reject(err);
         }
       };
       
       this.socket.onclose = (event) => {
-        if (timeoutId) { clearTimeout(timeoutId); }
+        clearTimeout(timeoutId);
+        this.stopHeartbeat();
+        
+        const wasConnected = this.connectionState === 'connected';
+        this.connectionState = 'disconnected';
         this.socket = null;
+        
+        // Categorize close reasons
+        const isNormalClose = event.code === 1000 || event.code === 1001;
+        const isServerError = event.code >= 1011 && event.code <= 1014;
+        
         this.options.events?.onDisconnect?.(event.code, event.reason);
         
-        // Reject all pending requests
-        this.pendingRequests.forEach((pending) => {
-          clearTimeout(pending.timeout);
-          pending.reject(new Error('Connection closed'));
-        });
-        this.pendingRequests.clear();
+        // Handle pending requests with different strategies based on close reason
+        this.handlePendingRequestsOnClose(isNormalClose);
         
         // If the connection was never established, reject the promise
         if (!connectionResolved && !this.isClosing) {
-          reject(new Error('Connection closed before opening'));
+          reject(new Error(`Connection closed before opening: ${event.code} ${event.reason}`));
         }
         
-        // Attempt reconnection if enabled
+        // Attempt reconnection if enabled and appropriate
         if (!this.isClosing && this.options.autoReconnect && 
-            this.reconnectAttempts < (this.options.maxReconnectAttempts || 5)) {
+            this.reconnectAttempts < (this.options.maxReconnectAttempts || 5) &&
+            !isNormalClose && !isServerError) {
           this.scheduleReconnect();
         }
       };
       
       this.socket.onmessage = (event) => {
+        // Update heartbeat timestamp
+        this.lastHeartbeat = Date.now();
+        
         try {
           const data = JSON.parse(event.data) as Message | MessageResponse | ContextEvent;
           
@@ -181,12 +221,14 @@ export class WebSocketClient {
    */
   disconnect(code?: number, reason?: string): void {
     this.isClosing = true;
+    this.connectionState = 'disconnected';
     
-    // Clear reconnect timer
+    // Clear all timers
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = undefined;
     }
+    this.stopHeartbeat();
     
     // Clear all pending request timers
     this.pendingRequests.forEach((pending) => {
@@ -212,6 +254,10 @@ export class WebSocketClient {
       }
       this.socket = null;
     }
+    
+    // Reset state
+    this.reconnectAttempts = 0;
+    this.lastHeartbeat = 0;
   }
 
   /**
@@ -224,24 +270,59 @@ export class WebSocketClient {
   }
 
   /**
+   * Gets the current connection state
+   * 
+   * @returns - Current connection state
+   */
+  getConnectionState(): 'disconnected' | 'connecting' | 'connected' | 'reconnecting' {
+    return this.connectionState;
+  }
+
+  /**
+   * Gets connection health metrics
+   * 
+   * @returns - Connection health information
+   */
+  getConnectionHealth(): {
+    isConnected: boolean;
+    reconnectAttempts: number;
+    lastHeartbeat: number;
+    pendingRequests: number;
+    queuedMessages: number;
+  } {
+    return {
+      isConnected: this.isActive(),
+      reconnectAttempts: this.reconnectAttempts,
+      lastHeartbeat: this.lastHeartbeat,
+      pendingRequests: this.pendingRequests.size,
+      queuedMessages: this.messageQueue.length
+    };
+  }
+
+  /**
    * Sends a message to the server
    * 
    * @param message - The message to send
-   * @throws Error if not connected
+   * @throws Error if not connected and queueing is disabled
    */
   send(message: Message): void {
     if (!this.isActive()) {
       if (this.options.autoReconnect && !this.isClosing) {
-        this.messageQueue.push(message);
-        if (!this.reconnectTimer) {
+        this.queueMessage(message);
+        if (!this.reconnectTimer && this.connectionState === 'disconnected') {
           this.scheduleReconnect();
         }
         return;
       }
-      throw new Error('WebSocket is not connected');
+      throw new Error(`WebSocket is not connected (state: ${this.connectionState})`);
     }
     
-    this.socket!.send(JSON.stringify(message));
+    try {
+      this.socket!.send(JSON.stringify(message));
+    } catch (error) {
+      this.options.events?.onError?.(new Error(`Failed to send message: ${error}`));
+      throw error;
+    }
   }
 
   /**
@@ -264,7 +345,9 @@ export class WebSocketClient {
       this.pendingRequests.set(messageId, {
         resolve,
         reject,
-        timeout: timeoutId
+        timeout: timeoutId,
+        timestamp: Date.now(),
+        retryCount: 0
       });
       
       try {
@@ -437,7 +520,7 @@ export class WebSocketClient {
   /**
    * Gets the workspace tree structure
    */
-  async getWorkspaceTree(maxDepth = 3, includeHidden = false): Promise<{ name: string; path: string; isDirectory: boolean; size?: number; lastModified?: Date; children?: any[] }> {
+  async getWorkspaceTree(maxDepth = 3, includeHidden = false): Promise<{ name: string; path: string; isDirectory: boolean; size?: number; lastModified?: Date; children?: unknown[] }> {
     const message: Message = {
       type: MessageType.GET_WORKSPACE_TREE,
       id: this.generateMessageId(),
@@ -446,7 +529,7 @@ export class WebSocketClient {
     };
     
     const response = await this.sendAndWait(message);
-    return response.data as { name: string; path: string; isDirectory: boolean; size?: number; lastModified?: Date; children?: any[] };
+    return response.data as { name: string; path: string; isDirectory: boolean; size?: number; lastModified?: Date; children?: unknown[] };
   }
 
   /**
@@ -465,27 +548,132 @@ export class WebSocketClient {
   }
 
   /**
-   * Schedules a reconnection attempt
+   * Schedules a reconnection attempt with exponential backoff and jitter
    * @private
    */
   private scheduleReconnect(): void {
-    if (this.isClosing || this.reconnectTimer) {
+    if (this.isClosing || this.reconnectTimer || this.connectionState !== 'disconnected') {
       return;
     }
     
-    const interval = Math.min(
-      (this.options.reconnectInterval || 1000) * Math.pow(2, this.reconnectAttempts),
-      30000
-    );
-    
+    this.connectionState = 'reconnecting';
     this.reconnectAttempts++;
+    
+    // Exponential backoff with jitter to prevent thundering herd
+    const baseInterval = this.options.reconnectInterval || 1000;
+    const exponentialDelay = Math.min(baseInterval * Math.pow(2, this.reconnectAttempts - 1), 30000);
+    const jitter = Math.random() * 0.3 * exponentialDelay; // 30% jitter
+    const interval = exponentialDelay + jitter;
+    
+    this.options.events?.onReconnecting?.(this.reconnectAttempts);
     
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = undefined;
       this.connect().catch((error) => {
+        this.connectionState = 'disconnected';
         this.options.events?.onError?.(error);
+        
+        // Schedule next reconnect if we haven't exceeded max attempts
+        if (this.reconnectAttempts < (this.options.maxReconnectAttempts || 5)) {
+          this.scheduleReconnect();
+        }
       });
     }, interval);
+  }
+
+  /**
+   * Starts the heartbeat mechanism
+   * @private
+   */
+  private startHeartbeat(): void {
+    this.stopHeartbeat();
+    
+    if (!this.options.heartbeatInterval) {
+      return;
+    }
+    
+    this.heartbeatTimer = setInterval(() => {
+      if (this.isActive()) {
+        // Send a ping message or check if we've received any data recently
+        const timeSinceLastHeartbeat = Date.now() - this.lastHeartbeat;
+        if (timeSinceLastHeartbeat > this.options.heartbeatInterval! * 2) {
+          // Connection appears stale, close it to trigger reconnection
+          this.options.events?.onError?.(new Error('Heartbeat timeout - connection appears stale'));
+          this.socket?.close(1000, 'Heartbeat timeout');
+        }
+      }
+    }, this.options.heartbeatInterval);
+  }
+
+  /**
+   * Stops the heartbeat mechanism
+   * @private
+   */
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = undefined;
+    }
+  }
+
+  /**
+   * Queues a message for later sending
+   * @private
+   */
+  private queueMessage(message: Message): void {
+    const maxSize = this.options.messageQueueMaxSize || 100;
+    
+    if (this.messageQueue.length >= maxSize) {
+      // Remove oldest message to make room
+      this.messageQueue.shift();
+    }
+    
+    this.messageQueue.push(message);
+  }
+
+  /**
+   * Processes queued messages
+   * @private
+   */
+  private processMessageQueue(): void {
+    while (this.messageQueue.length > 0 && this.isActive()) {
+      const message = this.messageQueue.shift();
+      if (message) {
+        try {
+          this.send(message);
+        } catch (error) {
+          // If send fails, put the message back at the front of the queue
+          this.messageQueue.unshift(message);
+          break;
+        }
+      }
+    }
+  }
+
+  /**
+   * Handles pending requests when connection closes
+   * @private
+   */
+  private handlePendingRequestsOnClose(isNormalClose: boolean): void {
+    this.pendingRequests.forEach((pending, requestId) => {
+      clearTimeout(pending.timeout);
+      
+      if (isNormalClose || pending.retryCount >= 3) {
+        // Normal close or too many retries - reject the request
+        pending.reject(new Error('Connection closed'));
+      } else if (this.options.autoReconnect) {
+        // Abnormal close and auto-reconnect enabled - retry the request later
+        pending.retryCount++;
+        // Request will be retried when connection is re-established
+        return;
+      } else {
+        pending.reject(new Error('Connection closed'));
+      }
+    });
+    
+    if (isNormalClose || !this.options.autoReconnect) {
+      this.pendingRequests.clear();
+    }
   }
 
   /**

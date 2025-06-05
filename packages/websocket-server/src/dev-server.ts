@@ -13,10 +13,13 @@ const server = new WebSocketServer({
   workspaceRoot: WORKSPACE_ROOT
 });
 
-server.start();
+async function startServer() {
+  await server.start();
+  console.log(`CodeWeaver WebSocket Server started on port ${PORT}`);
+  console.log(`Workspace root: ${WORKSPACE_ROOT}`);
+}
 
-console.log(`CodeWeaver WebSocket Server started on port ${PORT}`);
-console.log(`Workspace root: ${WORKSPACE_ROOT}`);
+startServer().catch(console.error);
 
 // Handle graceful shutdown
 process.on('SIGINT', () => {

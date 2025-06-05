@@ -12,5 +12,40 @@ export enum MessageType {
     EVENT = 'event',
     BROWSE_DIRECTORY = 'browse_directory',
     GET_WORKSPACE_TREE = 'get_workspace_tree',
-    SEARCH_FILES = 'search_files'
+    SEARCH_FILES = 'search_files',
+    
+    // @Mention prompt builder messages
+    READ_FILE = 'read_file',
+    LIST_FILES = 'list_files',
+    GET_FILE_METADATA = 'get_file_metadata',
+    GET_RECENT_FILES = 'get_recent_files',
+    GET_OPEN_FILES = 'get_open_files',
+    GET_DIAGNOSTICS = 'get_diagnostics',
+    GET_DIAGNOSTIC_SUMMARY = 'get_diagnostic_summary',
+    GET_GIT_DIFF = 'get_git_diff',
+    GET_GIT_STATUS = 'get_git_status',
+    GET_GIT_BRANCH = 'get_git_branch',
+    GET_COMMIT_FILES = 'get_commit_files',
+    GET_BRANCH_FILES = 'get_branch_files',
+    GET_COMMIT_HISTORY = 'get_commit_history',
+    FIND_SYMBOL = 'find_symbol',
+    GET_SYMBOL_DEFINITION = 'get_symbol_definition',
+    GET_SYMBOL_REFERENCES = 'get_symbol_references',
+    GET_FILE_SYMBOLS = 'get_file_symbols',
+    SEARCH_SYMBOLS = 'search_symbols',
+    GET_TYPE_DEFINITION = 'get_type_definition',
+    GET_IMPLEMENTATION = 'get_implementation',
+    GET_TYPESCRIPT_CONFIG = 'get_typescript_config',
+    
+    // Workspace management messages
+    CREATE_WORKSPACE = 'create_workspace',
+    LOAD_WORKSPACE = 'load_workspace',
+    SAVE_WORKSPACE = 'save_workspace',
+    DELETE_WORKSPACE = 'delete_workspace',
+    GET_RECENT_WORKSPACES = 'get_recent_workspaces',
+    FIND_WORKSPACE_BY_PATH = 'find_workspace_by_path',
+    UPDATE_WORKSPACE_SETTINGS = 'update_workspace_settings',
+    ADD_WORKSPACE_CONTEXT_SOURCE = 'add_workspace_context_source',
+    REMOVE_WORKSPACE_CONTEXT_SOURCE = 'remove_workspace_context_source',
+    ADD_RECENT_MENTION = 'add_recent_mention'
   }

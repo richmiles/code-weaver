@@ -4,5 +4,6 @@ export enum EventType {
     SOURCE_DELETED = 'source_deleted',
     ACTIVE_CONTEXT_CHANGED = 'active_context_changed',
     CONTENT_UPDATED = 'content_updated',
-    CONTENT_CLEARED = 'content_cleared'
+    CONTENT_CLEARED = 'content_cleared',
+    WORKSPACE_CHANGED = 'workspace_changed'
   }

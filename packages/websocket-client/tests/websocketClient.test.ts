@@ -380,7 +380,7 @@ describe('WebSocketClient', () => {
               responseData = ['1', '2'];
               break;
             case MessageType.GET_SOURCE_CONTENT:
-              responseData = 'file content here';
+              responseData = { content: 'file content here' };
               break;
             default:
               responseData = null;

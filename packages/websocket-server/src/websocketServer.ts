@@ -8,8 +8,12 @@ import {
   ContextEvent, 
   EventType, 
   FileSource,
-  SourceType 
+  SourceType,
+  ContextSource,
+  Workspace,
+  WorkspaceMetadata
 } from '@codeweaver/core';
+import { WorkspaceManager } from '@codeweaver/core/dist/workspace/WorkspaceManager.js';
 import { v4 as uuidv4 } from 'uuid';
 import { WebSocket, WebSocketServer as WSServer } from 'ws';
 
@@ -75,18 +79,36 @@ export class WebSocketServer {
   private pingInterval: NodeJS.Timeout | null = null;
   private config: ServerConfig;
   private contextManager: ContextManager;
+  private workspaceManager: WorkspaceManager;
+  private currentWorkspace: Workspace | null = null;
+  private workspaceManagerReady: boolean = false;
   
   constructor(config: Partial<ServerConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.contextManager = new ContextManager();
+    this.workspaceManager = new WorkspaceManager();
   }
   
   /**
    * Starts the WebSocket server
    */
-  start(): void {
+  async start(): Promise<void> {
     if (this.server) {
       this.stop();
+    }
+    
+    // Initialize WorkspaceManager
+    console.log('Initializing WorkspaceManager...');
+    try {
+      await this.workspaceManager.initialize();
+      console.log('WorkspaceManager initialized successfully');
+      this.workspaceManagerReady = true;
+    } catch (error) {
+      console.error('Failed to initialize WorkspaceManager:', error);
+      console.error('Error details:', error instanceof Error ? error.stack : String(error));
+      // Don't throw - let server start without workspace functionality for now
+      console.log('Continuing without WorkspaceManager...');
+      this.workspaceManagerReady = false;
     }
     
     this.server = new WSServer({ port: this.config.port });
@@ -211,6 +233,9 @@ export class WebSocketServer {
     });
     
     // Send welcome message
+    if (this.config.enableLogging) {
+      console.log(`Client connected: ${client.clientId}`);
+    }
     this.sendResponse(client, {
       id: 'welcome',
       success: true,
@@ -223,7 +248,7 @@ export class WebSocketServer {
    */
   private async handleMessage(client: CodeWeaverWebSocket, message: Message): Promise<void> {
     if (this.config.enableLogging) {
-      console.error(`Message from ${client.clientId}:`, message.type);
+      console.log(`Message from ${client.clientId}:`, message.type);
     }
 
     try {
@@ -278,6 +303,132 @@ export class WebSocketServer {
           
         case MessageType.SEARCH_FILES:
           await this.handleSearchFiles(client, message);
+          break;
+          
+        // @Mention prompt builder handlers
+        case MessageType.READ_FILE:
+          await this.handleReadFile(client, message);
+          break;
+          
+        case MessageType.LIST_FILES:
+          await this.handleListFiles(client, message);
+          break;
+          
+        case MessageType.GET_FILE_METADATA:
+          await this.handleGetFileMetadata(client, message);
+          break;
+          
+        case MessageType.GET_RECENT_FILES:
+          await this.handleGetRecentFiles(client, message);
+          break;
+          
+        case MessageType.GET_OPEN_FILES:
+          await this.handleGetOpenFiles(client, message);
+          break;
+          
+        case MessageType.GET_DIAGNOSTICS:
+          await this.handleGetDiagnostics(client, message);
+          break;
+          
+        case MessageType.GET_DIAGNOSTIC_SUMMARY:
+          await this.handleGetDiagnosticSummary(client, message);
+          break;
+          
+        case MessageType.GET_GIT_DIFF:
+          await this.handleGetGitDiff(client, message);
+          break;
+          
+        case MessageType.GET_GIT_STATUS:
+          await this.handleGetGitStatus(client, message);
+          break;
+          
+        case MessageType.GET_GIT_BRANCH:
+          await this.handleGetGitBranch(client, message);
+          break;
+          
+        case MessageType.GET_COMMIT_FILES:
+          await this.handleGetCommitFiles(client, message);
+          break;
+          
+        case MessageType.GET_BRANCH_FILES:
+          await this.handleGetBranchFiles(client, message);
+          break;
+          
+        case MessageType.GET_COMMIT_HISTORY:
+          await this.handleGetCommitHistory(client, message);
+          break;
+          
+        case MessageType.FIND_SYMBOL:
+          await this.handleFindSymbol(client, message);
+          break;
+          
+        case MessageType.GET_SYMBOL_DEFINITION:
+          await this.handleGetSymbolDefinition(client, message);
+          break;
+          
+        case MessageType.GET_SYMBOL_REFERENCES:
+          await this.handleGetSymbolReferences(client, message);
+          break;
+          
+        case MessageType.GET_FILE_SYMBOLS:
+          await this.handleGetFileSymbols(client, message);
+          break;
+          
+        case MessageType.SEARCH_SYMBOLS:
+          await this.handleSearchSymbols(client, message);
+          break;
+          
+        case MessageType.GET_TYPE_DEFINITION:
+          await this.handleGetTypeDefinition(client, message);
+          break;
+          
+        case MessageType.GET_IMPLEMENTATION:
+          await this.handleGetImplementation(client, message);
+          break;
+          
+        case MessageType.GET_TYPESCRIPT_CONFIG:
+          await this.handleGetTypeScriptConfig(client, message);
+          break;
+          
+        // Workspace management handlers
+        case MessageType.CREATE_WORKSPACE:
+          await this.handleCreateWorkspace(client, message);
+          break;
+          
+        case MessageType.LOAD_WORKSPACE:
+          await this.handleLoadWorkspace(client, message);
+          break;
+          
+        case MessageType.SAVE_WORKSPACE:
+          await this.handleSaveWorkspace(client, message);
+          break;
+          
+        case MessageType.DELETE_WORKSPACE:
+          await this.handleDeleteWorkspace(client, message);
+          break;
+          
+        case MessageType.GET_RECENT_WORKSPACES:
+          await this.handleGetRecentWorkspaces(client, message);
+          break;
+          
+        case MessageType.FIND_WORKSPACE_BY_PATH:
+          await this.handleFindWorkspaceByPath(client, message);
+          break;
+          
+        case MessageType.UPDATE_WORKSPACE_SETTINGS:
+          await this.handleUpdateWorkspaceSettings(client, message);
+          break;
+          
+        case MessageType.ADD_WORKSPACE_CONTEXT_SOURCE:
+          await this.handleAddWorkspaceContextSource(client, message);
+          break;
+          
+        case MessageType.REMOVE_WORKSPACE_CONTEXT_SOURCE:
+          await this.handleRemoveWorkspaceContextSource(client, message);
+          break;
+          
+        case MessageType.ADD_RECENT_MENTION:
+          await this.handleAddRecentMention(client, message);
           break;
           
         default:
@@ -1010,5 +1161,1061 @@ export class WebSocketServer {
    */
   getContextManager(): ContextManager {
     return this.contextManager;
+  }
+  
+  // @Mention prompt builder handlers
+  
+  /**
+   * Handle READ_FILE message - read file content
+   */
+  private async handleReadFile(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    const { path: filePath } = message.payload as { path: string };
+    
+    if (!filePath) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: 'File path is required'
+      });
+      return;
+    }
+    
+    try {
+      const fullPath = path.resolve(this.config.workspaceRoot!, filePath);
+      const content = await fs.promises.readFile(fullPath, 'utf8');
+      const stats = await fs.promises.stat(fullPath);
+      
+      this.sendResponse(client, {
+        id: message.id,
+        success: true,
+        data: { 
+          content,
+          size: stats.size,
+          lastModified: stats.mtime
+        }
+      });
+    } catch (error) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: `Failed to read file: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
+  }
+  
+  /**
+   * Handle LIST_FILES message - list files matching pattern
+   */
+  private async handleListFiles(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    const { pattern } = message.payload as { pattern: string };
+    
+    if (!pattern) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: 'File pattern is required'
+      });
+      return;
+    }
+    
+    try {
+      // Simple glob-like pattern matching for now
+      const files: string[] = [];
+      await this.findMatchingFiles(this.config.workspaceRoot!, pattern, files);
+      
+      this.sendResponse(client, {
+        id: message.id,
+        success: true,
+        data: { files }
+      });
+    } catch (error) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: `Failed to list files: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
+  }
+  
+  /**
+   * Handle GET_FILE_METADATA message
+   */
+  private async handleGetFileMetadata(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    const { path: filePath } = message.payload as { path: string };
+    
+    if (!filePath) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: 'File path is required'
+      });
+      return;
+    }
+    
+    try {
+      const fullPath = path.resolve(this.config.workspaceRoot!, filePath);
+      const stats = await fs.promises.stat(fullPath);
+      
+      this.sendResponse(client, {
+        id: message.id,
+        success: true,
+        data: { 
+          size: stats.size,
+          lastModified: stats.mtime,
+          isDirectory: stats.isDirectory(),
+          isFile: stats.isFile()
+        }
+      });
+    } catch (error) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: `Failed to get file metadata: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
+  }
+  
+  /**
+   * Handle GET_RECENT_FILES message - mock implementation for now
+   */
+  private async handleGetRecentFiles(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    const { hoursBack = 2 } = message.payload as { hoursBack?: number };
+    
+    try {
+      // Mock implementation - in a real VS Code extension, this would use VS Code APIs
+      const recentFiles: string[] = [];
+      const cutoffTime = new Date(Date.now() - hoursBack * 60 * 60 * 1000);
+      
+      await this.findRecentFiles(this.config.workspaceRoot!, cutoffTime, recentFiles);
+      
+      this.sendResponse(client, {
+        id: message.id,
+        success: true,
+        data: { files: recentFiles }
+      });
+    } catch (error) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: `Failed to get recent files: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
+  }
+  
+  /**
+   * Handle GET_OPEN_FILES message - mock implementation for now
+   */
+  private async handleGetOpenFiles(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    // Mock implementation - in a real VS Code extension, this would use VS Code APIs
+    this.sendResponse(client, {
+      id: message.id,
+      success: true,
+      data: { files: [] } // Empty for now, would be populated by VS Code extension
+    });
+  }
+  
+  /**
+   * Handle GET_DIAGNOSTICS message - mock implementation for now
+   */
+  private async handleGetDiagnostics(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    const { file } = message.payload as { file?: string };
+    
+    // Mock implementation - in a real VS Code extension, this would use the Problems panel API
+    this.sendResponse(client, {
+      id: message.id,
+      success: true,
+      data: { 
+        diagnostics: [] // Empty for now, would be populated by VS Code extension
+      }
+    });
+  }
+  
+  /**
+   * Handle GET_DIAGNOSTIC_SUMMARY message - mock implementation for now
+   */
+  private async handleGetDiagnosticSummary(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    // Mock implementation - in a real VS Code extension, this would aggregate Problems panel data
+    this.sendResponse(client, {
+      id: message.id,
+      success: true,
+      data: { 
+        errorCount: 0,
+        warningCount: 0,
+        infoCount: 0,
+        fileCount: 0,
+        topErrorFiles: []
+      }
+    });
+  }
+  
+  /**
+   * Handle GET_GIT_DIFF message
+   */
+  private async handleGetGitDiff(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    const { staged = false, file } = message.payload as { staged?: boolean; file?: string };
+    
+    try {
+      const { execSync } = require('child_process');
+      let command = staged ? 'git diff --cached' : 'git diff';
+      
+      if (file) {
+        command += ` -- "${file}"`;
+      }
+      
+      const diff = execSync(command, { 
+        cwd: this.config.workspaceRoot,
+        encoding: 'utf8'
+      });
+      
+      this.sendResponse(client, {
+        id: message.id,
+        success: true,
+        data: { diff }
+      });
+    } catch (error) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: `Failed to get git diff: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
+  }
+  
+  /**
+   * Handle GET_GIT_STATUS message
+   */
+  private async handleGetGitStatus(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    try {
+      const { execSync } = require('child_process');
+      const statusOutput = execSync('git status --porcelain', {
+        cwd: this.config.workspaceRoot,
+        encoding: 'utf8'
+      });
+      
+      const files = statusOutput.split('\n')
+        .filter((line: string) => line.trim())
+        .map((line: string) => {
+          const status = line.substring(0, 2);
+          const filePath = line.substring(3);
+          
+          let fileStatus: 'M' | 'A' | 'D' | 'R' = 'M';
+          if (status.includes('A')) fileStatus = 'A';
+          else if (status.includes('D')) fileStatus = 'D';
+          else if (status.includes('R')) fileStatus = 'R';
+          
+          return {
+            path: filePath,
+            status: fileStatus,
+            additions: 0, // Would need git diff --stat for accurate numbers
+            deletions: 0
+          };
+        });
+      
+      this.sendResponse(client, {
+        id: message.id,
+        success: true,
+        data: { files }
+      });
+    } catch (error) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: `Failed to get git status: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
+  }
+  
+  /**
+   * Handle GET_GIT_BRANCH message
+   */
+  private async handleGetGitBranch(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    try {
+      const { execSync } = require('child_process');
+      const branch = execSync('git branch --show-current', {
+        cwd: this.config.workspaceRoot,
+        encoding: 'utf8'
+      }).trim();
+      
+      this.sendResponse(client, {
+        id: message.id,
+        success: true,
+        data: { branch }
+      });
+    } catch (error) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: `Failed to get git branch: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
+  }
+  
+  /**
+   * Handle GET_COMMIT_FILES message
+   */
+  private async handleGetCommitFiles(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    const { commit } = message.payload as { commit: string };
+    
+    if (!commit) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: 'Commit hash is required'
+      });
+      return;
+    }
+    
+    try {
+      const { execSync } = require('child_process');
+      const filesOutput = execSync(`git diff-tree --no-commit-id --name-only -r ${commit}`, {
+        cwd: this.config.workspaceRoot,
+        encoding: 'utf8'
+      });
+      
+      const files = filesOutput.split('\n').filter((line: string) => line.trim());
+      
+      this.sendResponse(client, {
+        id: message.id,
+        success: true,
+        data: { files }
+      });
+    } catch (error) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: `Failed to get commit files: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
+  }
+  
+  /**
+   * Handle GET_BRANCH_FILES message
+   */
+  private async handleGetBranchFiles(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    const { branch, baseBranch = 'main' } = message.payload as { branch: string; baseBranch?: string };
+    
+    if (!branch) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: 'Branch name is required'
+      });
+      return;
+    }
+    
+    try {
+      const { execSync } = require('child_process');
+      const filesOutput = execSync(`git diff --name-only ${baseBranch}...${branch}`, {
+        cwd: this.config.workspaceRoot,
+        encoding: 'utf8'
+      });
+      
+      const files = filesOutput.split('\n').filter((line: string) => line.trim());
+      
+      this.sendResponse(client, {
+        id: message.id,
+        success: true,
+        data: { files }
+      });
+    } catch (error) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: `Failed to get branch files: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
+  }
+  
+  /**
+   * Handle GET_COMMIT_HISTORY message
+   */
+  private async handleGetCommitHistory(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    const { limit = 10 } = message.payload as { limit?: number };
+    
+    try {
+      const { execSync } = require('child_process');
+      const historyOutput = execSync(`git log -${limit} --pretty=format:"%H|%s|%an|%ad|%d" --date=iso --stat=1,1`, {
+        cwd: this.config.workspaceRoot,
+        encoding: 'utf8'
+      });
+      
+      const commits = historyOutput.split('\n')
+        .filter((line: string) => line.includes('|'))
+        .map((line: string) => {
+          const [hash, message, author, date] = line.split('|');
+          return {
+            hash,
+            message,
+            author,
+            date: new Date(date),
+            filesChanged: 0 // Would need to parse git log --stat output for accurate count
+          };
+        });
+      
+      this.sendResponse(client, {
+        id: message.id,
+        success: true,
+        data: { commits }
+      });
+    } catch (error) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: `Failed to get commit history: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
+  }
+  
+  // Symbol-related handlers (mock implementations - would be replaced by Language Server integration)
+  
+  /**
+   * Handle FIND_SYMBOL message - mock implementation for now
+   */
+  private async handleFindSymbol(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    const { name, kind } = message.payload as { name: string; kind?: string };
+    
+    if (!name) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: 'Symbol name is required'
+      });
+      return;
+    }
+    
+    // Mock implementation - in a real implementation, this would use TypeScript Language Server
+    this.sendResponse(client, {
+      id: message.id,
+      success: true,
+      data: { symbols: [] }
+    });
+  }
+  
+  /**
+   * Handle GET_SYMBOL_DEFINITION message - mock implementation for now
+   */
+  private async handleGetSymbolDefinition(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    const { file, line, character } = message.payload as { file: string; line: number; character: number };
+    
+    if (!file || line === undefined || character === undefined) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: 'File, line, and character are required'
+      });
+      return;
+    }
+    
+    // Mock implementation - in a real implementation, this would use TypeScript Language Server
+    this.sendResponse(client, {
+      id: message.id,
+      success: true,
+      data: { symbol: null }
+    });
+  }
+  
+  /**
+   * Handle GET_SYMBOL_REFERENCES message - mock implementation for now
+   */
+  private async handleGetSymbolReferences(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    const { file, line, character } = message.payload as { file: string; line: number; character: number };
+    
+    if (!file || line === undefined || character === undefined) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: 'File, line, and character are required'
+      });
+      return;
+    }
+    
+    // Mock implementation - in a real implementation, this would use TypeScript Language Server
+    this.sendResponse(client, {
+      id: message.id,
+      success: true,
+      data: { references: [] }
+    });
+  }
+  
+  /**
+   * Handle GET_FILE_SYMBOLS message - mock implementation for now
+   */
+  private async handleGetFileSymbols(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    const { file } = message.payload as { file: string };
+    
+    if (!file) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: 'File path is required'
+      });
+      return;
+    }
+    
+    // Mock implementation - in a real implementation, this would use TypeScript Language Server or AST analyzer
+    this.sendResponse(client, {
+      id: message.id,
+      success: true,
+      data: { symbols: [] }
+    });
+  }
+  
+  /**
+   * Handle SEARCH_SYMBOLS message - mock implementation for now
+   */
+  private async handleSearchSymbols(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    const { query, limit = 50 } = message.payload as { query: string; limit?: number };
+    
+    if (!query) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: 'Search query is required'
+      });
+      return;
+    }
+    
+    // Mock implementation - in a real implementation, this would use TypeScript Language Server
+    this.sendResponse(client, {
+      id: message.id,
+      success: true,
+      data: { symbols: [] }
+    });
+  }
+  
+  /**
+   * Handle GET_TYPE_DEFINITION message - mock implementation for now
+   */
+  private async handleGetTypeDefinition(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    const { file, line, character } = message.payload as { file: string; line: number; character: number };
+    
+    if (!file || line === undefined || character === undefined) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: 'File, line, and character are required'
+      });
+      return;
+    }
+    
+    // Mock implementation - in a real implementation, this would use TypeScript Language Server
+    this.sendResponse(client, {
+      id: message.id,
+      success: true,
+      data: { symbol: null }
+    });
+  }
+  
+  /**
+   * Handle GET_IMPLEMENTATION message - mock implementation for now
+   */
+  private async handleGetImplementation(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    const { file, line, character } = message.payload as { file: string; line: number; character: number };
+    
+    if (!file || line === undefined || character === undefined) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: 'File, line, and character are required'
+      });
+      return;
+    }
+    
+    // Mock implementation - in a real implementation, this would use TypeScript Language Server
+    this.sendResponse(client, {
+      id: message.id,
+      success: true,
+      data: { symbols: [] }
+    });
+  }
+  
+  /**
+   * Handle GET_TYPESCRIPT_CONFIG message - mock implementation for now
+   */
+  private async handleGetTypeScriptConfig(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    const { configPath } = message.payload as { configPath?: string };
+    
+    try {
+      const tsconfigPath = configPath || path.join(this.config.workspaceRoot!, 'tsconfig.json');
+      
+      let compilerOptions = {};
+      let files: string[] = [];
+      
+      try {
+        const tsconfigContent = await fs.promises.readFile(tsconfigPath, 'utf8');
+        const tsconfig = JSON.parse(tsconfigContent);
+        compilerOptions = tsconfig.compilerOptions || {};
+        
+        // Find TypeScript files in the project
+        await this.findTypeScriptFiles(this.config.workspaceRoot!, files);
+      } catch {
+        // If no tsconfig.json, use default settings and find all TS files
+        await this.findTypeScriptFiles(this.config.workspaceRoot!, files);
+      }
+      
+      this.sendResponse(client, {
+        id: message.id,
+        success: true,
+        data: { 
+          files,
+          compilerOptions
+        }
+      });
+    } catch (error) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: `Failed to get TypeScript config: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
+  }
+  
+  // Helper methods
+  
+  /**
+   * Find files matching a simple glob-like pattern
+   */
+  private async findMatchingFiles(dir: string, pattern: string, results: string[]): Promise<void> {
+    try {
+      const items = await fs.promises.readdir(dir, { withFileTypes: true });
+      
+      for (const item of items) {
+        const itemPath = path.join(dir, item.name);
+        const relativePath = path.relative(this.config.workspaceRoot!, itemPath);
+        
+        if (item.isFile()) {
+          // Simple pattern matching - could be enhanced with proper glob support
+          if (this.matchesPattern(item.name, pattern) || this.matchesPattern(relativePath, pattern)) {
+            results.push(relativePath);
+          }
+        } else if (item.isDirectory() && !item.name.startsWith('.')) {
+          await this.findMatchingFiles(itemPath, pattern, results);
+        }
+      }
+    } catch {
+      // Skip directories we can't read
+    }
+  }
+  
+  /**
+   * Find recently modified files
+   */
+  private async findRecentFiles(dir: string, cutoffTime: Date, results: string[]): Promise<void> {
+    try {
+      const items = await fs.promises.readdir(dir, { withFileTypes: true });
+      
+      for (const item of items) {
+        const itemPath = path.join(dir, item.name);
+        
+        if (item.isFile()) {
+          try {
+            const stats = await fs.promises.stat(itemPath);
+            if (stats.mtime > cutoffTime) {
+              const relativePath = path.relative(this.config.workspaceRoot!, itemPath);
+              results.push(relativePath);
+            }
+          } catch {
+            // Skip files we can't stat
+          }
+        } else if (item.isDirectory() && !item.name.startsWith('.')) {
+          await this.findRecentFiles(itemPath, cutoffTime, results);
+        }
+      }
+    } catch {
+      // Skip directories we can't read
+    }
+  }
+  
+  /**
+   * Find TypeScript files in a directory
+   */
+  private async findTypeScriptFiles(dir: string, results: string[]): Promise<void> {
+    try {
+      const items = await fs.promises.readdir(dir, { withFileTypes: true });
+      
+      for (const item of items) {
+        const itemPath = path.join(dir, item.name);
+        
+        if (item.isFile() && (item.name.endsWith('.ts') || item.name.endsWith('.tsx'))) {
+          results.push(itemPath);
+        } else if (item.isDirectory() && !item.name.startsWith('.') && item.name !== 'node_modules') {
+          await this.findTypeScriptFiles(itemPath, results);
+        }
+      }
+    } catch {
+      // Skip directories we can't read
+    }
+  }
+  
+  /**
+   * Simple pattern matching for file names/paths
+   */
+  private matchesPattern(text: string, pattern: string): boolean {
+    // Convert simple glob patterns to regex
+    const regexPattern = pattern
+      .replace(/\*/g, '.*')
+      .replace(/\?/g, '.');
+    
+    try {
+      return new RegExp(regexPattern, 'i').test(text);
+    } catch {
+      // If regex is invalid, fall back to simple includes
+      return text.toLowerCase().includes(pattern.toLowerCase());
+    }
+  }
+
+  // Workspace management handlers
+
+  /**
+   * Handle CREATE_WORKSPACE message
+   */
+  private async handleCreateWorkspace(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    try {
+      const { name, rootPath, settings } = message.payload as { name: string; rootPath: string; settings?: any };
+      
+      if (!name || !rootPath) {
+        throw new Error('Name and rootPath are required');
+      }
+
+      const workspace = await this.workspaceManager.createWorkspace(name, rootPath, settings);
+      this.currentWorkspace = workspace;
+      
+      // Update server workspace root to match the new workspace
+      this.config.workspaceRoot = workspace.rootPath;
+      
+      this.sendResponse(client, {
+        id: message.id,
+        success: true,
+        data: workspace
+      });
+
+      // Broadcast workspace change event
+      this.broadcastEvent({
+        type: EventType.WORKSPACE_CHANGED,
+        timestamp: new Date(),
+        data: { workspaceId: workspace.id, workspaceName: workspace.name }
+      });
+    } catch (error) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: `Failed to create workspace: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
+  }
+
+  /**
+   * Handle LOAD_WORKSPACE message
+   */
+  private async handleLoadWorkspace(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    try {
+      const { id } = message.payload as { id: string };
+      
+      if (!id) {
+        throw new Error('Workspace ID is required');
+      }
+
+      const workspace = await this.workspaceManager.loadWorkspace(id);
+      
+      if (!workspace) {
+        throw new Error(`Workspace with ID ${id} not found`);
+      }
+
+      this.currentWorkspace = workspace;
+      
+      // Update server workspace root to match the loaded workspace
+      this.config.workspaceRoot = workspace.rootPath;
+      
+      // Load context sources into the context manager
+      this.contextManager.clearAllSources();
+      for (const source of workspace.contextSources) {
+        // For workspace loading, we need to restore the full source with its ID
+        // Since addSource creates new IDs, we'll manually set the sources
+        (this.contextManager as any).sources.set(source.id, source);
+      }
+      
+      this.sendResponse(client, {
+        id: message.id,
+        success: true,
+        data: workspace
+      });
+
+      // Broadcast workspace change event
+      this.broadcastEvent({
+        type: EventType.WORKSPACE_CHANGED,
+        timestamp: new Date(),
+        data: { workspaceId: workspace.id, workspaceName: workspace.name }
+      });
+    } catch (error) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: `Failed to load workspace: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
+  }
+
+  /**
+   * Handle SAVE_WORKSPACE message
+   */
+  private async handleSaveWorkspace(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    try {
+      if (!this.currentWorkspace) {
+        throw new Error('No workspace currently loaded');
+      }
+
+      // Update workspace with current context sources
+      this.currentWorkspace.contextSources = this.contextManager.getAllSources();
+      
+      await this.workspaceManager.saveWorkspace(this.currentWorkspace);
+      
+      this.sendResponse(client, {
+        id: message.id,
+        success: true,
+        data: { message: 'Workspace saved successfully' }
+      });
+    } catch (error) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: `Failed to save workspace: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
+  }
+
+  /**
+   * Handle DELETE_WORKSPACE message
+   */
+  private async handleDeleteWorkspace(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    try {
+      const { id } = message.payload as { id: string };
+      
+      if (!id) {
+        throw new Error('Workspace ID is required');
+      }
+
+      const success = await this.workspaceManager.deleteWorkspace(id);
+      
+      if (!success) {
+        throw new Error(`Failed to delete workspace ${id}`);
+      }
+
+      // If we deleted the current workspace, clear it
+      if (this.currentWorkspace?.id === id) {
+        this.currentWorkspace = null;
+        this.contextManager.clearAllSources();
+      }
+      
+      this.sendResponse(client, {
+        id: message.id,
+        success: true,
+        data: { message: 'Workspace deleted successfully' }
+      });
+    } catch (error) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: `Failed to delete workspace: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
+  }
+
+  /**
+   * Handle GET_RECENT_WORKSPACES message
+   */
+  private async handleGetRecentWorkspaces(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    try {
+      if (!this.workspaceManagerReady) {
+        this.sendResponse(client, {
+          id: message.id,
+          success: true,
+          data: []
+        });
+        return;
+      }
+      
+      const recentWorkspaces = await this.workspaceManager.getRecentWorkspaces();
+      
+      this.sendResponse(client, {
+        id: message.id,
+        success: true,
+        data: recentWorkspaces
+      });
+    } catch (error) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: `Failed to get recent workspaces: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
+  }
+
+  /**
+   * Handle FIND_WORKSPACE_BY_PATH message
+   */
+  private async handleFindWorkspaceByPath(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    try {
+      const { rootPath } = message.payload as { rootPath: string };
+      
+      if (!rootPath) {
+        throw new Error('Root path is required');
+      }
+
+      const workspace = await this.workspaceManager.findWorkspaceByPath(rootPath);
+      
+      this.sendResponse(client, {
+        id: message.id,
+        success: true,
+        data: workspace
+      });
+    } catch (error) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: `Failed to find workspace: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
+  }
+
+  /**
+   * Handle UPDATE_WORKSPACE_SETTINGS message
+   */
+  private async handleUpdateWorkspaceSettings(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    try {
+      const { workspaceId, settings } = message.payload as { workspaceId: string; settings: any };
+      
+      if (!workspaceId || !settings) {
+        throw new Error('Workspace ID and settings are required');
+      }
+
+      await this.workspaceManager.updateWorkspaceSettings(workspaceId, settings);
+      
+      // If this is the current workspace, update our reference
+      if (this.currentWorkspace?.id === workspaceId) {
+        this.currentWorkspace.settings = { ...this.currentWorkspace.settings, ...settings };
+      }
+      
+      this.sendResponse(client, {
+        id: message.id,
+        success: true,
+        data: { message: 'Workspace settings updated successfully' }
+      });
+    } catch (error) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: `Failed to update workspace settings: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
+  }
+
+  /**
+   * Handle ADD_WORKSPACE_CONTEXT_SOURCE message
+   */
+  private async handleAddWorkspaceContextSource(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    try {
+      const { workspaceId, contextSource } = message.payload as { workspaceId: string; contextSource: ContextSource };
+      
+      if (!workspaceId || !contextSource) {
+        throw new Error('Workspace ID and context source are required');
+      }
+
+      await this.workspaceManager.addContextSource(workspaceId, contextSource);
+      
+      // If this is the current workspace, also add to context manager
+      if (this.currentWorkspace?.id === workspaceId) {
+        (this.contextManager as any).sources.set(contextSource.id, contextSource);
+        this.currentWorkspace.contextSources.push(contextSource);
+      }
+      
+      this.sendResponse(client, {
+        id: message.id,
+        success: true,
+        data: { message: 'Context source added to workspace successfully' }
+      });
+    } catch (error) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: `Failed to add context source: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
+  }
+
+  /**
+   * Handle REMOVE_WORKSPACE_CONTEXT_SOURCE message
+   */
+  private async handleRemoveWorkspaceContextSource(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    try {
+      const { workspaceId, contextSourceId } = message.payload as { workspaceId: string; contextSourceId: string };
+      
+      if (!workspaceId || !contextSourceId) {
+        throw new Error('Workspace ID and context source ID are required');
+      }
+
+      await this.workspaceManager.removeContextSource(workspaceId, contextSourceId);
+      
+      // If this is the current workspace, also remove from context manager
+      if (this.currentWorkspace?.id === workspaceId) {
+        this.contextManager.deleteSource(contextSourceId);
+        this.currentWorkspace.contextSources = this.currentWorkspace.contextSources.filter(
+          cs => cs.id !== contextSourceId
+        );
+      }
+      
+      this.sendResponse(client, {
+        id: message.id,
+        success: true,
+        data: { message: 'Context source removed from workspace successfully' }
+      });
+    } catch (error) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: `Failed to remove context source: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
+  }
+
+  /**
+   * Handle ADD_RECENT_MENTION message
+   */
+  private async handleAddRecentMention(client: CodeWeaverWebSocket, message: Message): Promise<void> {
+    try {
+      const { workspaceId, mention } = message.payload as { workspaceId: string; mention: string };
+      
+      if (!workspaceId || !mention) {
+        throw new Error('Workspace ID and mention are required');
+      }
+
+      await this.workspaceManager.addRecentMention(workspaceId, mention);
+      
+      // If this is the current workspace, update our reference
+      if (this.currentWorkspace?.id === workspaceId) {
+        this.currentWorkspace.recentMentions = [
+          mention, 
+          ...this.currentWorkspace.recentMentions.filter(m => m !== mention)
+        ].slice(0, 50);
+      }
+      
+      this.sendResponse(client, {
+        id: message.id,
+        success: true,
+        data: { message: 'Recent mention added successfully' }
+      });
+    } catch (error) {
+      this.sendResponse(client, {
+        id: message.id,
+        success: false,
+        error: `Failed to add recent mention: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
+  }
+
+  /**
+   * Get current workspace
+   */
+  getCurrentWorkspace(): Workspace | null {
+    return this.currentWorkspace;
   }
 }

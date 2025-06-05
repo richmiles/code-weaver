@@ -7,6 +7,9 @@ export default {
   testEnvironment: 'jsdom', // Explicitly override the environment for this package
   moduleNameMapper: {
     ...baseConfig.moduleNameMapper, // Keep base mappings
+    // Add package mappings
+    '@codeweaver/websocket-client/(.*)': '<rootDir>/../websocket-client/src/$1',
+    '@codeweaver/websocket-client': '<rootDir>/../websocket-client/src',
     // Add webview-specific mappings (CSS, assets)
     '\\.(css|less|scss|sass)$': '<rootDir>/../../shared/mocks/styleMock.ts', // Correct relative path
     '\\.(jpg|jpeg|png|gif|svg)$': '<rootDir>/../../shared/mocks/styleMock.ts' // Correct relative path

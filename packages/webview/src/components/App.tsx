@@ -1,34 +1,90 @@
 import React, { useState, useEffect } from 'react';
 import { WebSocketClient } from '@codeweaver/websocket-client';
-import { ContextSource, FileSource, SourceType } from '@codeweaver/core';
+import { ContextSource, FileSource, SourceType, Workspace } from '@codeweaver/core';
 import FileBrowser from './FileBrowser';
+import ContextBuilder from './ContextBuilder';
+import { WorkspaceSelector } from './WorkspaceSelector';
+import { LoadingSpinner, LoadingOverlay } from './LoadingSpinner';
+import { useKeyboardShortcuts, KeyboardShortcut } from '../hooks/useKeyboardShortcuts';
+import { useAsyncState } from '../hooks/useAsyncState';
 import '../styles/index.css';
 
 const App = () => {
   const [client, setClient] = useState<WebSocketClient | null>(null);
   const [connected, setConnected] = useState(false);
-  const [sources, setSources] = useState<ContextSource[]>([]);
-  const [activeSources, setActiveSources] = useState<ContextSource[]>([]);
-  const [previewSource, setPreviewSource] = useState<ContextSource | null>(null);
-  const [previewContent, setPreviewContent] = useState<string | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
+  const [currentWorkspace, setCurrentWorkspace] = useState<Workspace | null>(null);
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
+  
+  // Use async state hooks for better loading management
+  const sourcesState = useAsyncState<ContextSource[]>([]);
+  const activeSourcesState = useAsyncState<ContextSource[]>([]);
+  const previewState = useAsyncState<{ source: ContextSource; content: string } | null>(null);
+
+  // Keyboard shortcuts
+  const shortcuts: KeyboardShortcut[] = [
+    {
+      key: 'f',
+      ctrl: true,
+      action: () => {
+        const searchInput = document.querySelector('input[type="search"]') as HTMLInputElement;
+        if (searchInput) {
+          searchInput.focus();
+          searchInput.select();
+        }
+      },
+      description: 'Focus search'
+    },
+    {
+      key: 'r',
+      ctrl: true,
+      action: () => loadSources(),
+      description: 'Refresh sources'
+    },
+    {
+      key: '?',
+      shift: true,
+      action: () => setShowShortcutsHelp(true),
+      description: 'Show keyboard shortcuts'
+    },
+    {
+      key: 'Escape',
+      action: () => {
+        setShowShortcutsHelp(false);
+        previewState.reset();
+      },
+      description: 'Close dialogs/preview'
+    }
+  ];
+
+  useKeyboardShortcuts(shortcuts);
 
   // Initialize WebSocket connection
   useEffect(() => {
     const wsClient = new WebSocketClient('ws://localhost:8180', {
       events: {
         onConnect: () => {
-          console.log('Connected to WebSocket server');
+          console.log('WebSocket connected successfully');
           setConnected(true);
           // Load initial sources
           loadSources();
         },
-        onDisconnect: () => {
-          console.log('Disconnected from WebSocket server');
+        onDisconnect: (code: number, reason: string) => {
+          console.log('WebSocket disconnected:', code, reason);
           setConnected(false);
         },
         onError: (error: Error) => {
-          console.error('WebSocket error:', error);
+          console.error('WebSocket connection error:', error);
+          setConnected(false);
+        },
+        onMessage: (data: unknown) => {
+          console.log('Received WebSocket message:', data);
+        },
+        onReconnecting: (attempt: number) => {
+          console.log(`Reconnecting... attempt ${attempt}`);
+        },
+        onReconnected: () => {
+          console.log('Reconnected successfully');
+          loadSources(); // Refresh data after reconnection
         }
       }
     });
@@ -46,12 +102,16 @@ const App = () => {
     if (!client) return;
     
     try {
-      const response = await client.getSources();
-      setSources(response);
-      
-      const activeSourceIds = await client.getActiveContext();
-      const activeResponse = response.filter(source => activeSourceIds.includes(source.id));
-      setActiveSources(activeResponse);
+      await sourcesState.execute(async () => {
+        const response = await client.getSources();
+        const activeSourceIds = await client.getActiveContext();
+        const activeResponse = response.filter(source => activeSourceIds.includes(source.id));
+        
+        // Update active sources state
+        activeSourcesState.setData(activeResponse);
+        
+        return response;
+      });
     } catch (error) {
       console.error('Failed to load sources:', error);
     }
@@ -61,24 +121,30 @@ const App = () => {
     const files = event.target.files;
     if (!files || !client) return;
 
-    for (const file of Array.from(files)) {
-      try {
-        const fileSource: Omit<FileSource, 'id' | 'createdAt' | 'updatedAt'> = {
-          type: SourceType.FILE,
-          label: file.name,
-          filePath: file.name, // In a real implementation, this would be the actual path
-          description: `File: ${file.name}`,
-          fileMetadata: {
-            size: file.size,
-            lastModified: new Date(file.lastModified)
-          }
-        };
+    try {
+      await sourcesState.execute(async () => {
+        const sources = sourcesState.data || [];
+        
+        for (const file of Array.from(files)) {
+          const fileSource: Omit<FileSource, 'id' | 'createdAt' | 'updatedAt'> = {
+            type: SourceType.FILE,
+            label: file.name,
+            filePath: file.name,
+            description: `File: ${file.name}`,
+            fileMetadata: {
+              size: file.size,
+              lastModified: new Date(file.lastModified)
+            }
+          };
 
-        await client.addSource(fileSource);
-        await loadSources(); // Refresh the sources list
-      } catch (error) {
-        console.error('Failed to add file:', error);
-      }
+          await client.addSource(fileSource);
+        }
+        
+        // Return updated sources
+        return await client.getSources();
+      });
+    } catch (error) {
+      console.error('Failed to add files:', error);
     }
   };
 
@@ -212,28 +278,41 @@ const App = () => {
       </header>
 
       <main className="main">
-        <section className="file-input-section">
-          <h2>Add Files to Context</h2>
-          <input
-            type="file"
-            multiple
-            onChange={handleFileSelect}
-            disabled={!connected}
-            className="file-input"
-          />
-          <p className="input-description">Or browse workspace files below:</p>
-        </section>
+        <WorkspaceSelector 
+          client={client} 
+          onWorkspaceSelected={setCurrentWorkspace}
+        />
 
-        <section>
-          <FileBrowser 
-            client={client}
-            connected={connected}
-            onFileSelect={handleFileBrowserSelect}
-          />
-        </section>
+        {currentWorkspace && (
+          <>
+            <ContextBuilder client={client} connected={connected} />
 
-        <section className="sources-section">
-          <h2>Context Sources ({sources.length})</h2>
+            <section className="file-input-section">
+              <h2>Add Files to Context</h2>
+              <input
+                type="file"
+                multiple
+                onChange={handleFileSelect}
+                disabled={!connected}
+                className="file-input"
+              />
+              <p className="input-description">Or browse workspace files below:</p>
+            </section>
+          </>
+        )}
+
+        {currentWorkspace && (
+          <>
+            <section>
+              <FileBrowser 
+                client={client}
+                connected={connected}
+                onFileSelect={handleFileBrowserSelect}
+              />
+            </section>
+
+            <section className="sources-section">
+              <h2>Context Sources ({sources.length})</h2>
           <div className="sources-list">
             {sources.map(source => {
               const isActive = activeSources.some(s => s.id === source.id);
@@ -293,6 +372,8 @@ const App = () => {
             </div>
           )}
         </section>
+          </>
+        )}
 
         {previewSource && (
           <section className="preview-section">
